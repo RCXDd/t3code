@@ -208,6 +208,20 @@ docker run -d --name parakeet --restart unless-stopped \
 Then choose **Custom (OpenAI-compatible)**, set the server URL to `http://127.0.0.1:5092/v1`, and the
 model to `parakeet-tdt-0.6b-v3`.
 
+### Clean up transcripts
+
+**Settings → Speech to text → Cleanup** rewrites each transcript before it is inserted: it removes
+filler words and false starts, fixes grammar and punctuation, and spells names, files, and terms the
+way your vocabulary and the thread's recent messages do. Each dictation takes a few seconds longer.
+
+- **Text generation model** uses the model chosen for commit messages and titles in
+  **Settings → Providers**, so a Codex or Claude subscription works without another key.
+- **OpenAI-compatible** calls a chat completions server, such as a local
+  [Ollama](https://ollama.com) at `http://127.0.0.1:11434/v1` with a small model like `qwen3:4b`.
+
+If cleanup fails, the raw transcript is inserted instead. Turn off **Use thread context** to send
+only the transcript.
+
 ### On iPhone
 
 Without a transcription service, supported iPhones with iOS 26 or later transcribe on the device.

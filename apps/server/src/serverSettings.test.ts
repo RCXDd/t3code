@@ -1301,13 +1301,21 @@ it.layer(NodeServices.layer)("server settings", (it) => {
           provider: "groq",
           language: "de",
           providers: { groq: { apiKey: "groq-secret", model: "whisper-large-v3" } },
+          cleanup: { mode: "openai-compatible", apiKey: "cleanup-secret" },
         },
       });
+      assert.strictEqual(saved.speechToText.cleanup.apiKey, "cleanup-secret");
+      assert.strictEqual(
+        ServerSettingsModule.redactServerSettingsForClient(saved).speechToText.cleanup.apiKey,
+        "••••••",
+      );
+      assert.isTrue(Option.isSome(yield* store.get("speech-to-text-cleanup-YXBpS2V5")));
       assert.strictEqual(saved.speechToText.providers.groq?.apiKey, "groq-secret");
       const client = ServerSettingsModule.redactServerSettingsForClient(saved);
       assert.strictEqual(client.speechToText.providers.groq?.apiKey, "••••••");
       assert.strictEqual(client.speechToText.providers.groq?.model, "whisper-large-v3");
       assert.notInclude(yield* fs.readFileString(config.settingsPath), "groq-secret");
+      assert.notInclude(yield* fs.readFileString(config.settingsPath), "cleanup-secret");
       const secretName = "speech-to-text-Z3JvcQ-YXBpS2V5";
       assert.isTrue(Option.isSome(yield* store.get(secretName)));
 

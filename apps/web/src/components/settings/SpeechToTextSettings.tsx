@@ -4,7 +4,9 @@ import {
   isSpeechToTextConfigured,
   resolveSpeechToTextProviderSettings,
   SPEECH_TO_TEXT_PROVIDERS,
+  SpeechToTextCleanupMode,
   SpeechToTextProvider,
+  type SpeechToTextSettings,
 } from "@t3tools/contracts";
 import { XIcon } from "lucide-react";
 import * as Schema from "effect/Schema";
@@ -14,6 +16,7 @@ import { useEnvironmentScope } from "../../state/session";
 import { Button } from "../ui/button";
 import { DraftInput } from "../ui/draft-input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { Switch } from "../ui/switch";
 import { SecretInput } from "./SecretInput";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
@@ -49,6 +52,10 @@ function SpeechToTextForm(props: {
   readonly supported: boolean;
 }) {
   const settings = useEnvironmentSettings(props.environmentId, (value) => value.speechToText);
+  const textModel = useEnvironmentSettings(
+    props.environmentId,
+    (value) => value.textGenerationModelSelection.model,
+  );
   const updateSettings = useUpdateEnvironmentSettings(props.environmentId);
   const canEdit = useEnvironmentScope(props.environmentId, AuthSettingsWriteScope);
   const disabled = !canEdit || !props.supported;
@@ -237,7 +244,7 @@ function SpeechToTextForm(props: {
             />
           }
         />
-        {!info || info.supportsPrompt ? (
+        {!info || info.supportsPrompt || settings.cleanup.mode !== null ? (
           <SettingsRow
             {...searchableSetting("speech-to-text-prompt")}
             description="Names and terms the service should spell correctly, separated by commas."
@@ -255,6 +262,167 @@ function SpeechToTextForm(props: {
           />
         ) : null}
       </SettingsSection>
+      <DictationCleanupSection
+        settings={settings}
+        disabled={disabled}
+        textModel={textModel}
+        updateCleanup={(cleanup) => updateSettings({ speechToText: { cleanup } })}
+      />
     </SettingsPageContainer>
+  );
+}
+
+const CLEANUP_MODE_LABELS = {
+  off: "Off",
+  "text-generation": "Text generation model",
+  "openai-compatible": "OpenAI-compatible (Ollama, LM Studio)",
+} as const;
+const isCleanupMode = Schema.is(SpeechToTextCleanupMode);
+
+function DictationCleanupSection(props: {
+  readonly settings: SpeechToTextSettings;
+  readonly disabled: boolean;
+  readonly textModel: string;
+  readonly updateCleanup: (cleanup: {
+    mode?: SpeechToTextCleanupMode | null;
+    baseUrl?: string;
+    model?: string;
+    apiKey?: string;
+    instructions?: string;
+    useThreadContext?: boolean;
+  }) => void;
+}) {
+  const cleanup = props.settings.cleanup;
+  const keyStored = cleanup.apiKey.length > 0;
+  return (
+    <SettingsSection title="Cleanup" id="speech-to-text-cleanup">
+      <SettingsRow
+        {...searchableSetting("speech-to-text-cleanup")}
+        description={
+          cleanup.mode === "text-generation"
+            ? `Rewrites each transcript with ${props.textModel}, the text generation model in Settings → Providers, before it is inserted.`
+            : "Removes filler words, fixes grammar, and spells names the way your conversation does before the transcript is inserted. Adds a few seconds per dictation."
+        }
+        control={
+          <Select
+            value={cleanup.mode ?? "off"}
+            disabled={props.disabled}
+            onValueChange={(value) => {
+              if (value === "off") props.updateCleanup({ mode: null });
+              else if (isCleanupMode(value)) props.updateCleanup({ mode: value });
+            }}
+          >
+            <SelectTrigger size="sm" className="w-full sm:w-64" aria-label="Dictation cleanup">
+              <SelectValue>{CLEANUP_MODE_LABELS[cleanup.mode ?? "off"]}</SelectValue>
+            </SelectTrigger>
+            <SelectPopup align="end" alignItemWithTrigger={false}>
+              {Object.entries(CLEANUP_MODE_LABELS).map(([value, label]) => (
+                <SelectItem key={value} hideIndicator value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        }
+      />
+      {cleanup.mode === "openai-compatible" ? (
+        <>
+          <SettingsRow
+            {...searchableSetting("speech-to-text-cleanup-base-url")}
+            description="The /v1 address of a chat completions server. Ollama listens on port 11434."
+            control={
+              <DraftInput
+                size="sm"
+                type="url"
+                className="w-full sm:w-64"
+                placeholder="http://127.0.0.1:11434/v1"
+                value={cleanup.baseUrl}
+                disabled={props.disabled}
+                aria-label="Cleanup server URL"
+                onCommit={(baseUrl) => props.updateCleanup({ baseUrl: baseUrl.trim() })}
+              />
+            }
+          />
+          <SettingsRow
+            {...searchableSetting("speech-to-text-cleanup-model")}
+            description="A small instruction model is enough, such as qwen3:4b or gemma3:4b."
+            control={
+              <DraftInput
+                size="sm"
+                className="w-full sm:w-64"
+                placeholder="qwen3:4b"
+                value={cleanup.model}
+                disabled={props.disabled}
+                aria-label="Cleanup model"
+                onCommit={(model) => props.updateCleanup({ model: model.trim() })}
+              />
+            }
+          />
+          <SettingsRow
+            {...searchableSetting("speech-to-text-cleanup-api-key")}
+            description="Optional. Sent as a bearer token when your server requires one."
+            control={
+              <div className="flex w-full items-center gap-1 sm:w-64">
+                <SecretInput
+                  size="sm"
+                  configured={keyStored}
+                  value=""
+                  disabled={props.disabled}
+                  aria-label="Cleanup API key"
+                  onCommit={(apiKey) => props.updateCleanup({ apiKey })}
+                />
+                {keyStored ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    disabled={props.disabled}
+                    aria-label="Remove cleanup API key"
+                    onClick={() => props.updateCleanup({ apiKey: "" })}
+                  >
+                    <XIcon />
+                  </Button>
+                ) : null}
+              </div>
+            }
+          />
+        </>
+      ) : null}
+      {cleanup.mode !== null ? (
+        <>
+          <SettingsRow
+            {...searchableSetting("speech-to-text-cleanup-instructions")}
+            description="Extra rules for the rewrite, such as tone or formatting."
+            control={
+              <DraftInput
+                size="sm"
+                className="w-full sm:w-64"
+                placeholder="Keep English technical terms"
+                value={cleanup.instructions}
+                disabled={props.disabled}
+                aria-label="Cleanup instructions"
+                onCommit={(instructions) =>
+                  props.updateCleanup({ instructions: instructions.trim() })
+                }
+              />
+            }
+          />
+          <SettingsRow
+            {...searchableSetting("speech-to-text-cleanup-context")}
+            description="Sends the thread's last few messages with the transcript so names, files, and terms match the conversation."
+            control={
+              <Switch
+                checked={cleanup.useThreadContext}
+                disabled={props.disabled}
+                onCheckedChange={(checked) =>
+                  props.updateCleanup({ useThreadContext: Boolean(checked) })
+                }
+                aria-label="Use thread context"
+              />
+            }
+          />
+        </>
+      ) : null}
+    </SettingsSection>
   );
 }

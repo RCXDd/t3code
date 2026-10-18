@@ -29,6 +29,7 @@ import {
 } from "@t3tools/provider-core/server/driver";
 import { codexContinuationIdentity } from "./CodexHomeLayout.ts";
 import { withInstanceIdentity } from "@t3tools/provider-core/server/instanceIdentity";
+import type { DictationCleanupInput } from "@t3tools/provider-core/server/textGeneration";
 import { HttpClient } from "effect/http";
 const DRIVER = ProviderDriverKind.make("codex");
 
@@ -273,6 +274,7 @@ export const makeManagedCodexProvider = Effect.fn("makeManagedCodexProvider")(fu
           }),
       ),
     );
+  const nativeCleanDictation = nativeGeneration.cleanDictation;
   const textGeneration: ProviderInstance["textGeneration"] = {
     generateCommitMessage: (value) =>
       protect("generateCommitMessage", nativeGeneration.generateCommitMessage(value)),
@@ -284,6 +286,12 @@ export const makeManagedCodexProvider = Effect.fn("makeManagedCodexProvider")(fu
       protect("generateThreadTitle", nativeGeneration.generateThreadTitle(value)),
     generateReviewGuide: (value) =>
       protect("generateReviewGuide", nativeGeneration.generateReviewGuide(value)),
+    ...(nativeCleanDictation
+      ? {
+          cleanDictation: (value: DictationCleanupInput) =>
+            protect("cleanDictation", nativeCleanDictation(value)),
+        }
+      : {}),
   };
   return {
     instanceId,

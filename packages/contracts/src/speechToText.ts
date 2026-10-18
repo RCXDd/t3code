@@ -1,7 +1,12 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { ForwardCompatibleNullable, TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
+import {
+  ForwardCompatibleNullable,
+  ThreadId,
+  TrimmedNonEmptyString,
+  TrimmedString,
+} from "./baseSchemas.ts";
 
 /**
  * Hosted speech-to-text services the environment can send dictation audio to.
@@ -112,6 +117,30 @@ export const SpeechToTextProviderSettings = Schema.Struct({
 });
 export type SpeechToTextProviderSettings = typeof SpeechToTextProviderSettings.Type;
 
+/**
+ * `text-generation` uses the environment's text generation model (Settings → Providers), so a
+ * Codex or Claude subscription can clean dictation without another key. `openai-compatible`
+ * calls a chat completions endpoint such as a local Ollama or LM Studio.
+ */
+export const SpeechToTextCleanupMode = Schema.Literals(["text-generation", "openai-compatible"]);
+export type SpeechToTextCleanupMode = typeof SpeechToTextCleanupMode.Type;
+
+export const SpeechToTextCleanupSettings = Schema.Struct({
+  /** Null inserts the raw transcript. */
+  mode: ForwardCompatibleNullable(SpeechToTextCleanupMode).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  baseUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  model: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  apiKey: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed("")), (schema) =>
+    schema.annotateKey({ settingsSecret: true }),
+  ),
+  instructions: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  /** Send recent messages of the thread so names and terms are spelled like the conversation. */
+  useThreadContext: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+});
+export type SpeechToTextCleanupSettings = typeof SpeechToTextCleanupSettings.Type;
+
 export const SpeechToTextSettings = Schema.Struct({
   /** Null turns environment transcription off. */
   provider: ForwardCompatibleNullable(SpeechToTextProvider).pipe(
@@ -125,6 +154,7 @@ export const SpeechToTextSettings = Schema.Struct({
   providers: Schema.Record(Schema.String, SpeechToTextProviderSettings).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  cleanup: SpeechToTextCleanupSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 });
 export type SpeechToTextSettings = typeof SpeechToTextSettings.Type;
 
@@ -141,6 +171,16 @@ export const SpeechToTextSettingsPatch = Schema.Struct({
         apiKey: Schema.optionalKey(TrimmedString),
       }),
     ),
+  ),
+  cleanup: Schema.optionalKey(
+    Schema.Struct({
+      mode: Schema.optionalKey(Schema.NullOr(SpeechToTextCleanupMode)),
+      baseUrl: Schema.optionalKey(TrimmedString),
+      model: Schema.optionalKey(TrimmedString),
+      apiKey: Schema.optionalKey(TrimmedString),
+      instructions: Schema.optionalKey(TrimmedString),
+      useThreadContext: Schema.optionalKey(Schema.Boolean),
+    }),
   ),
 });
 export type SpeechToTextSettingsPatch = typeof SpeechToTextSettingsPatch.Type;
@@ -173,6 +213,8 @@ export const SPEECH_TO_TEXT_MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
 export const SpeechToTextTranscriptionResult = Schema.Struct({
   text: Schema.String,
+  /** Set when cleanup was configured but failed, so the raw transcript was returned. */
+  cleanupError: Schema.optionalKey(Schema.String),
 });
 export type SpeechToTextTranscriptionResult = typeof SpeechToTextTranscriptionResult.Type;
 
@@ -181,6 +223,8 @@ export const SPEECH_TO_TEXT_UPLOAD_URL_TTL_MS = 2 * 60_000;
 
 export const SpeechToTextCreateUploadUrlInput = Schema.Struct({
   mimeType: TrimmedNonEmptyString.check(Schema.isMaxLength(128)),
+  /** The thread being dictated into; cleanup may read its recent messages for context. */
+  threadId: Schema.optionalKey(ThreadId),
   sizeBytes: Schema.Int.check(
     Schema.isBetween({ minimum: 1, maximum: SPEECH_TO_TEXT_MAX_AUDIO_BYTES }),
   ),
