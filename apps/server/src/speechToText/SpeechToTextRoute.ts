@@ -223,6 +223,18 @@ export const layerSpeechToTextRoute = HttpRouter.add(
             ? Effect.succeed(jsonResponse(200, { text: transcript }))
             : cleanTranscript(settings.value, transcript, claims.threadId ?? null).pipe(
                 Effect.scoped,
+                // A provider's own finalizers can die (a temp directory it cannot remove); the
+                // transcript is already in hand, so a defect must not cost it.
+                Effect.catchDefect((defect) =>
+                  Effect.as(
+                    Effect.logWarning("Dictation cleanup failed unexpectedly.", { defect }),
+                    jsonResponse(200, {
+                      text: transcript,
+                      cleanupError:
+                        "Cleanup failed unexpectedly, so the transcript was inserted as transcribed.",
+                    }),
+                  ),
+                ),
               ),
         ),
         Effect.catchTags({

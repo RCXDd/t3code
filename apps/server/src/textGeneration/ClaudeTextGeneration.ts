@@ -184,9 +184,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     );
 
     const runClaudeCommand = Effect.fn("runClaudeJson.runClaudeCommand")(function* () {
-      // Neither a title nor a dictation cleanup reads the checkout, so skip loading its context.
       const workingDirectory =
-        operation === "generateThreadTitle" || operation === "cleanDictation"
+        operation === "generateThreadTitle"
           ? yield* fileSystem
               .makeTempDirectoryScoped({ prefix: "t3code-claude-title-" })
               .pipe(
