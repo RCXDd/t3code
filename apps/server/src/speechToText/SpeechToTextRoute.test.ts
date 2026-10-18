@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import { HttpClient, HttpClientResponse, HttpRouter } from "effect/http";
 
@@ -66,7 +67,7 @@ describe("SpeechToTextRoute transcription", () => {
       );
       const issued = yield* issueSpeechToTextUploadUrl({ mimeType: "audio/webm", sizeBytes: 4 });
       const context = yield* Effect.context<
-        ServerSecretStore.ServerSecretStore | ServerSettingsService
+        ServerSecretStore.ServerSecretStore | ServerSettingsService | FileSystem.FileSystem
       >();
       const { handler, dispose } = HttpRouter.toWebHandler(
         layerSpeechToTextRoute.pipe(
@@ -110,7 +111,7 @@ describe("SpeechToTextRoute cleanup", () => {
       );
       const issued = yield* issueSpeechToTextUploadUrl({ mimeType: "audio/webm", sizeBytes: 1 });
       const context = yield* Effect.context<
-        ServerSecretStore.ServerSecretStore | ServerSettingsService
+        ServerSecretStore.ServerSecretStore | ServerSettingsService | FileSystem.FileSystem
       >();
       const { handler, dispose } = HttpRouter.toWebHandler(
         layerSpeechToTextRoute.pipe(

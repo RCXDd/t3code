@@ -22,6 +22,7 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
+  buildDictationCleanupPrompt,
   buildThreadTitlePrompt,
 } from "@t3tools/provider-core/server/textGenerationPrompts";
 import {
@@ -342,11 +343,22 @@ export const makeMuseTextGeneration = Effect.fn("makeMuseTextGeneration")(functi
   });
   const generateReviewGuide: ProviderTextGeneration["generateReviewGuide"] = () =>
     Effect.fail(investigationUnsupported("generateReviewGuide", "Muse Code"));
+  const cleanDictation: NonNullable<ProviderTextGeneration["cleanDictation"]> = Effect.fn(
+    "MuseTextGeneration.cleanDictation",
+  )(function* (input) {
+    const generated = yield* runMuseJson({
+      operation: "cleanDictation",
+      ...buildDictationCleanupPrompt(input),
+      modelSelection: input.modelSelection,
+    });
+    return { text: generated.text.trim() };
+  });
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
     generateReviewGuide,
+    cleanDictation,
   } satisfies ProviderTextGeneration;
 });

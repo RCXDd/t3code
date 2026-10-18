@@ -146,6 +146,26 @@ it.layer(NodeServices.layer)("Muse text generation", (it) => {
     }),
   );
 
+  it.effect("cleans dictation through the same read-only JSON turn", () =>
+    Effect.gen(function* () {
+      const test = fixture(finish('{"text":"  Run the tests.  "}'));
+      const service = yield* test.make;
+      expect(
+        yield* service.cleanDictation!({
+          cwd: "/tmp",
+          transcript: "um run the the tests",
+          language: "en",
+          vocabulary: "",
+          instructions: "",
+          conversation: [],
+          modelSelection,
+        }),
+      ).toEqual({ text: "Run the tests." });
+      expect(test.createHost).toHaveBeenCalledWith(expect.objectContaining({ readOnly: true }));
+      expect(test.host.close).toHaveBeenCalledOnce();
+    }),
+  );
+
   it.effect("uses low effort by default and normalizes stale efforts against the model", () =>
     Effect.gen(function* () {
       for (const { saved, variants, expected } of [

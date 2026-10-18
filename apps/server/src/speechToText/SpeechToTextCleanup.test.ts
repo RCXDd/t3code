@@ -31,7 +31,7 @@ const baseInput = {
 describe("recentDictationConversation", () => {
   it("keeps the last chat messages and drops tool output", () => {
     const message = (type: "user_message" | "assistant_message" | "reasoning", text: string) =>
-      ({ type, text }) as unknown as OrchestrationV2TurnItem;
+      ({ item: { type, text } }) as unknown as { item: OrchestrationV2TurnItem };
     const items = [
       message("user_message", "first"),
       message("reasoning", "thinking"),
@@ -113,7 +113,7 @@ describe("cleanDictation", () => {
     }),
   );
 
-  it.effect("uses the environment's text generation model and its conversation setting", () =>
+  it.effect("never sends thread context to an agent CLI with tools", () =>
     Effect.gen(function* () {
       const calls: Array<
         Parameters<NonNullable<TextGeneration.TextGeneration["Service"]["cleanDictation"]>>[0]
@@ -128,11 +128,26 @@ describe("cleanDictation", () => {
       const text = yield* cleanDictation({
         ...baseInput,
         textGeneration,
-        settings: settings({ cleanup: { mode: "text-generation", useThreadContext: false } }),
+        settings: settings({ cleanup: { mode: "text-generation", useThreadContext: true } }),
       }).pipe(Effect.provideService(HttpClient.HttpClient, noRequests));
       expect(text).toBe("Kannst du bitte die Tests laufen lassen?");
       expect(calls[0]!.modelSelection).toEqual(modelSelection);
       expect(calls[0]!.conversation).toEqual([]);
+    }),
+  );
+
+  it.effect("refuses to rewrite a transcript longer than the prompt can hold", () =>
+    Effect.gen(function* () {
+      const failure = yield* cleanDictation({
+        ...baseInput,
+        transcript: `${"word ".repeat(4_001)}END`,
+        settings: settings({
+          cleanup: { mode: "openai-compatible", baseUrl: "http://x/v1", model: "m" },
+        }),
+      }).pipe(Effect.provideService(HttpClient.HttpClient, noRequests), Effect.flip);
+      expect(failure.message).toBe(
+        "The recording is too long to clean up, so it was inserted as transcribed.",
+      );
     }),
   );
 

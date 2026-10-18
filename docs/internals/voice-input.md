@@ -39,5 +39,7 @@ the size and MIME type, and the route caps the body at that size.
 Cleanup runs on the server after transcription, inside the same request, so every
 client gets it without another round trip. It is best-effort: a failed or empty
 rewrite returns the raw transcript with `cleanupError` rather than failing the
-dictation. The thread context is reference data for spelling; the prompt tells the
-model not to follow it, because it can contain agent output.
+dictation. Thread context goes only to tool-free chat completions models: agent
+CLIs used as text generation models keep read and shell tools even in their
+read-only modes, and the context can contain agent and tool output, so a prompt
+label alone is not a boundary there.

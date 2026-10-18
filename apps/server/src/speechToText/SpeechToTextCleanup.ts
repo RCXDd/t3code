@@ -3,7 +3,10 @@ import type {
   OrchestrationV2TurnItem,
   SpeechToTextSettings,
 } from "@t3tools/contracts";
-import { buildDictationCleanupPrompt } from "@t3tools/provider-core/server/textGenerationPrompts";
+import {
+  buildDictationCleanupPrompt,
+  DICTATION_CLEANUP_MAX_TRANSCRIPT_CHARS,
+} from "@t3tools/provider-core/server/textGenerationPrompts";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import { HttpClient, HttpClientRequest } from "effect/http";
@@ -25,12 +28,12 @@ export type DictationConversation = ReadonlyArray<{
 
 /** The last few chat messages; tool calls and reasoning carry no spelling the user dictates. */
 export function recentDictationConversation(
-  items: ReadonlyArray<OrchestrationV2TurnItem>,
+  items: ReadonlyArray<{ readonly item: Pick<OrchestrationV2TurnItem, "type"> }>,
 ): DictationConversation {
   const messages: Array<{ role: "user" | "assistant"; text: string }> = [];
-  for (const item of items) {
+  for (const { item } of items) {
     if (item.type !== "user_message" && item.type !== "assistant_message") continue;
-    const text = item.text.trim();
+    const text = (item as unknown as { readonly text: string }).text.trim();
     if (!text) continue;
     messages.push({
       role: item.type === "user_message" ? "user" : "assistant",
@@ -114,12 +117,20 @@ export const cleanDictation = Effect.fn("SpeechToText.cleanDictation")(function*
   const cleanup = input.settings.cleanup;
   const transcript = input.transcript.trim();
   if (cleanup.mode === null || transcript.length === 0) return transcript;
+  if (transcript.length > DICTATION_CLEANUP_MAX_TRANSCRIPT_CHARS) {
+    return yield* new SpeechToTextCleanupFailure({
+      message: "The recording is too long to clean up, so it was inserted as transcribed.",
+    });
+  }
   const promptInput = {
     transcript,
     language: input.settings.language,
     vocabulary: input.settings.prompt,
     instructions: cleanup.instructions,
-    conversation: cleanup.useThreadContext ? input.conversation : [],
+    // Agent CLIs answer with read and shell tools available, so conversation text, which can
+    // hold agent and tool output, only goes to tool-free chat completions models.
+    conversation:
+      cleanup.useThreadContext && cleanup.mode === "openai-compatible" ? input.conversation : [],
   };
 
   let cleaned: string;

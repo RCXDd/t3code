@@ -300,7 +300,7 @@ function DictationCleanupSection(props: {
         {...searchableSetting("speech-to-text-cleanup")}
         description={
           cleanup.mode === "text-generation"
-            ? `Rewrites each transcript with ${props.textModel}, the text generation model in Settings → Providers, before it is inserted.`
+            ? `Rewrites each transcript with ${props.textModel}, the text generation model in Settings → Providers, before it is inserted. Only the transcript and vocabulary are sent.`
             : "Removes filler words, fixes grammar, and spells names the way your conversation does before the transcript is inserted. Adds a few seconds per dictation."
         }
         control={
@@ -407,20 +407,22 @@ function DictationCleanupSection(props: {
               />
             }
           />
-          <SettingsRow
-            {...searchableSetting("speech-to-text-cleanup-context")}
-            description="Sends the thread's last few messages with the transcript so names, files, and terms match the conversation."
-            control={
-              <Switch
-                checked={cleanup.useThreadContext}
-                disabled={props.disabled}
-                onCheckedChange={(checked) =>
-                  props.updateCleanup({ useThreadContext: Boolean(checked) })
-                }
-                aria-label="Use thread context"
-              />
-            }
-          />
+          {cleanup.mode === "openai-compatible" ? (
+            <SettingsRow
+              {...searchableSetting("speech-to-text-cleanup-context")}
+              description="Sends the thread's last few messages with the transcript so names, files, and terms match the conversation. Agent text models never receive them, because they can run tools."
+              control={
+                <Switch
+                  checked={cleanup.useThreadContext}
+                  disabled={props.disabled}
+                  onCheckedChange={(checked) =>
+                    props.updateCleanup({ useThreadContext: Boolean(checked) })
+                  }
+                  aria-label="Use thread context"
+                />
+              }
+            />
+          ) : null}
         </>
       ) : null}
     </SettingsSection>
