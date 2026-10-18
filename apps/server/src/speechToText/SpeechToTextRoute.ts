@@ -113,9 +113,10 @@ const jsonResponse = (status: number, body: Record<string, string>) =>
     headers: { "cache-control": "private, no-store" },
   });
 
-// A hard row limit: without a user-turn limit the window never widens to whole turns, which can
-// hold megabytes of tool output. Six chat messages are picked from these rows.
-const CONTEXT_ROW_LIMIT = 40;
+// Without a user-turn limit the window never widens to whole turns, which can hold megabytes of
+// tool output. The limit applies per thread segment, so a fork reads it once per ancestor; fork
+// chains are short, and the timeout below bounds the rest. Six chat messages are kept.
+const CONTEXT_ROW_LIMIT = 16;
 const CONTEXT_TIMEOUT = "5 seconds";
 
 const readDictationConversation = Effect.fn("SpeechToText.readDictationConversation")(function* (
@@ -150,9 +151,14 @@ const cleanTranscript = Effect.fn("SpeechToText.cleanTranscript")(function* (
   const textGeneration = yield* Effect.serviceOption(TextGeneration.TextGeneration);
   // An empty directory: the rewrite needs no checkout, and agent CLIs read their working tree.
   const fileSystem = yield* FileSystem.FileSystem;
-  const cwd = yield* fileSystem
-    .makeTempDirectoryScoped({ prefix: "t3code-dictation-" })
-    .pipe(Effect.orElseSucceed(() => NodeOS.tmpdir()));
+  // Removal is best-effort: a directory that cannot be deleted must not cost the transcript.
+  const cwd = yield* Effect.acquireRelease(
+    fileSystem.makeTempDirectory({ prefix: "t3code-dictation-" }).pipe(Effect.option),
+    (directory) =>
+      Option.isSome(directory)
+        ? fileSystem.remove(directory.value, { recursive: true }).pipe(Effect.ignoreCause)
+        : Effect.void,
+  ).pipe(Effect.map((directory) => Option.getOrElse(directory, () => NodeOS.tmpdir())));
   return yield* cleanDictation({
     settings: settings.speechToText,
     transcript,
