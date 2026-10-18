@@ -30,6 +30,11 @@ import {
   rememberMicrophones,
 } from "../../lib/microphonePriority";
 import { getLocalVoiceTranscriber } from "../../native/voiceTranscription";
+import type { EnvironmentId } from "@t3tools/contracts";
+import {
+  environmentVoiceTranscriptionAvailable,
+  getEnvironmentVoiceTranscriber,
+} from "./environmentVoiceTranscriber";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { getNativeShowcaseScene } from "../showcase/nativeShowcaseScene";
 import {
@@ -100,10 +105,11 @@ function useVoiceInputRuntime() {
   const registry = use(RegistryContext);
   useAtomMount(mobilePreferencesAtom);
   useAtomMount(updateMobilePreferencesAtom);
-  const [{ state, ownerKey, label }, setState] = useState({
+  const [{ state, ownerKey, label, environmentId }, setState] = useState({
     state: INITIAL_STATE,
     ownerKey: null as string | null,
     label: null as string | null,
+    environmentId: null as EnvironmentId | null,
   });
   const [focusedOwners, setFocusedOwners] = useState<ReadonlySet<string>>(new Set());
   const setOwnerFocused = useCallback((key: string, focused: boolean) => {
@@ -153,7 +159,15 @@ function useVoiceInputRuntime() {
     recorderRef.current = recorder;
     sessionRef.current = new VoiceInputSession({
       recorder,
-      getTranscriber: getLocalVoiceTranscriber,
+      // A configured environment service wins so Android can dictate and iOS matches the
+      // service chosen in Settings; otherwise iOS keeps transcribing on the device.
+      getTranscriber: () => {
+        const environmentId = sessionRef.current?.environmentId ?? null;
+        return (
+          (environmentId ? getEnvironmentVoiceTranscriber(environmentId) : null) ??
+          getLocalVoiceTranscriber()
+        );
+      },
       requestPermission: async () => {
         const permission = await requestRecordingPermissionsAsync();
         return { granted: permission.granted, canAskAgain: permission.canAskAgain };
@@ -166,6 +180,7 @@ function useVoiceInputRuntime() {
           state: nextState,
           ownerKey: sessionRef.current?.ownerKey ?? null,
           label: sessionRef.current?.label ?? null,
+          environmentId: sessionRef.current?.environmentId ?? null,
         }),
     });
   }
@@ -245,11 +260,17 @@ function useVoiceInputRuntime() {
     return () => clearInterval(intervalId);
   }, [audioLevels, controller, recorder, state.phase]);
 
+  const locallyAvailable = getLocalVoiceTranscriber() !== null || getNativeShowcaseScene() !== null;
   const stop = useCallback(() => controller.stop(), [controller]);
   const cancel = useCallback(() => controller.cancel(), [controller]);
 
   return {
-    isAvailable: getLocalVoiceTranscriber() !== null || getNativeShowcaseScene() !== null,
+    // Composers add their own environment to this; the session's environment only keeps the
+    // global controls (Retry, microphone settings) usable for the session it belongs to.
+    isLocallyAvailable: locallyAvailable,
+    isAvailable:
+      locallyAvailable ||
+      (environmentId !== null && environmentVoiceTranscriptionAvailable(environmentId)),
     state,
     audioLevels,
     elapsedSeconds,

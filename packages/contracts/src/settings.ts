@@ -45,6 +45,7 @@ import {
   ProviderDriverKind,
 } from "./providerInstance.ts";
 import { PullRequestMergeMethod } from "./pullRequest.ts";
+import { SpeechToTextSettings, SpeechToTextSettingsPatch } from "./speechToText.ts";
 
 export const TimestampFormat = Schema.Literals(["locale", "12-hour", "24-hour"]);
 export type TimestampFormat = typeof TimestampFormat.Type;
@@ -1200,6 +1201,7 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  speechToText: SpeechToTextSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   sourceControlHosts: Schema.Record(Schema.String, SourceControlHostSettings).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
@@ -1455,6 +1457,8 @@ export const ServerSettingsPatch = Schema.Struct({
       otlpLogsUrl: Schema.optionalKey(TrimmedString),
     }),
   ),
+  /** Send the secret marker back to keep a stored API key, or an empty string to remove it. */
+  speechToText: Schema.optionalKey(SpeechToTextSettingsPatch),
   /**
    * Merges per host: a patched field replaces the saved one, so a client sends a per-server-host
    * map whole, with the redaction marker for each saved secret it keeps. An empty or omitted

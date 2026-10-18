@@ -1331,6 +1331,10 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:check-otlp-endpoint",
       tag: WS_METHODS.serverCheckOtlpEndpoint,
     }),
+    createSpeechToTextUploadUrl: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:speech-to-text:create-upload-url",
+      tag: WS_METHODS.speechToTextCreateUploadUrl,
+    }),
     retryResourceTelemetry: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:retry-resource-telemetry",
       tag: WS_METHODS.serverRetryResourceTelemetry,

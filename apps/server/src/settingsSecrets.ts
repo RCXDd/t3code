@@ -3,6 +3,7 @@ import {
   ClaudeSettings,
   CodexSettings,
   type ServerSettings,
+  SpeechToTextProviderSettings,
   UsageLimitSourceConfig,
   secretSettingsFields,
 } from "@t3tools/contracts";
@@ -31,6 +32,7 @@ const providerSecretFields = new Map([
   ),
 ]);
 const usageLimitSecretFields = secretSettingsFields(UsageLimitSourceConfig);
+const speechToTextSecretFields = secretSettingsFields(SpeechToTextProviderSettings);
 const encode = (value: string) => Buffer.from(value, "utf8").toString("base64url");
 
 export interface SettingsSecret {
@@ -142,5 +144,22 @@ export function mapSettingsSecrets(
     ]),
   ) as ServerSettings["usageLimitSources"];
 
-  return { ...settings, providerInstances, sourceControlHosts, usageLimitSources };
+  const speechToTextProviders = Object.fromEntries(
+    Object.entries(settings.speechToText.providers).map(([provider, fields]) => [
+      provider,
+      mapFields(
+        fields,
+        speechToTextSecretFields,
+        (field) => `speech-to-text-${encode(provider)}-${encode(field)}`,
+      ),
+    ]),
+  ) as ServerSettings["speechToText"]["providers"];
+
+  return {
+    ...settings,
+    providerInstances,
+    sourceControlHosts,
+    usageLimitSources,
+    speechToText: { ...settings.speechToText, providers: speechToTextProviders },
+  };
 }
