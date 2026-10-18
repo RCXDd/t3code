@@ -21,6 +21,7 @@ import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/
 import { SettingsActionRow } from "./components/SettingsActionRow";
 import { SettingsDragHandle } from "./components/SettingsDragHandle";
 import { SettingsSection } from "./components/SettingsSection";
+import { OnDeviceTranscriptionSettings } from "./components/OnDeviceTranscriptionSettings";
 
 const REMOVE_SIZE = 20;
 
@@ -162,6 +163,7 @@ export function SettingsMicrophoneRouteScreen() {
             </Text>
           </>
         ) : null}
+        <OnDeviceTranscriptionSettings />
         <SettingsSection
           title="Preferred order"
           trailing={

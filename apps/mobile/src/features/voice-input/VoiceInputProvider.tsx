@@ -1,4 +1,4 @@
-import { RegistryContext, useAtomMount } from "@effect/atom-react";
+import { RegistryContext, useAtomMount, useAtomValue } from "@effect/atom-react";
 import {
   AudioModule,
   RecordingPresets,
@@ -30,6 +30,7 @@ import {
   rememberMicrophones,
 } from "../../lib/microphonePriority";
 import { getLocalVoiceTranscriber } from "../../native/voiceTranscription";
+import { localVoiceEngineStateAtom } from "./localVoiceEngineState";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { getNativeShowcaseScene } from "../showcase/nativeShowcaseScene";
 import {
@@ -100,6 +101,9 @@ function useVoiceInputRuntime() {
   const registry = use(RegistryContext);
   useAtomMount(mobilePreferencesAtom);
   useAtomMount(updateMobilePreferencesAtom);
+  // Re-render when the on-device engine or its download changes, so isAvailable below updates;
+  // the atom ignores unrelated preference changes such as the microphone order.
+  useAtomValue(localVoiceEngineStateAtom);
   const [{ state, ownerKey, label }, setState] = useState({
     state: INITIAL_STATE,
     ownerKey: null as string | null,
