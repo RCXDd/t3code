@@ -26,7 +26,7 @@ import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as HostPowerMonitor from "./background/HostPowerMonitor.ts";
 import * as ServerConfig from "./config.ts";
-import { withUntracedRequests } from "./http.ts";
+import { withUnloggedCredentialRequests, withUntracedRequests } from "./http.ts";
 import * as ServerHttp from "./http.ts";
 import {
   guardHttpResponseWriteErrors,
@@ -1041,6 +1041,7 @@ const layerMakeServer = Layer.unwrap(
     const layerRoutes = HttpRouter.serve(layerMakeRoutes.pipe(Layer.provide(layerLauncher)), {
       disableLogger: !config.logWebSocketEvents,
       routerConfig: HTTP_ROUTER_CONFIG,
+      middleware: withUnloggedCredentialRequests,
     }).pipe(
       withUntracedRequests,
       Layer.tap(() => Deferred.succeed(routesReady, undefined).pipe(Effect.orDie)),
