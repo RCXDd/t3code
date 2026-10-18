@@ -176,7 +176,8 @@ recording and preserves your existing draft.
 
 ### Set up a transcription service
 
-Choose a service in **Settings → Speech to text**. The setting belongs to the environment, so every
+Choose a service in **Settings → Speech to text** on web and desktop, or **Settings → Server
+settings → Speech to text** in the mobile app. The setting belongs to the environment, so every
 web, desktop, and mobile client connected to it can dictate. API keys stay in that environment's
 secret store. Recordings go from the environment to the service you choose and are deleted after
 transcription; only the message text is sent when you submit.
