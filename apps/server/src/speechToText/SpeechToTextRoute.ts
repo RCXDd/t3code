@@ -1,3 +1,6 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeOS from "node:os";
+
 import {
   isSpeechToTextConfigured,
   type ServerSettings,
@@ -9,6 +12,7 @@ import {
 import * as ByteSize from "effect/ByteSize";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { HttpMiddleware, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
@@ -21,8 +25,7 @@ import {
   timingSafeEqualBase64Url,
 } from "../auth/utils.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
-import * as ServerConfig from "../config.ts";
-import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
+import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import {
@@ -110,26 +113,23 @@ const jsonResponse = (status: number, body: Record<string, string>) =>
     headers: { "cache-control": "private, no-store" },
   });
 
-// Enough rows for the last few exchanges; the full transcript of a long thread is far costlier.
+// A hard row limit: without a user-turn limit the window never widens to whole turns, which can
+// hold megabytes of tool output. Six chat messages are picked from these rows.
 const CONTEXT_ROW_LIMIT = 40;
-const CONTEXT_USER_TURN_LIMIT = 3;
 const CONTEXT_TIMEOUT = "5 seconds";
 
 const readDictationConversation = Effect.fn("SpeechToText.readDictationConversation")(function* (
   threadId: ThreadId | null,
 ) {
   if (!threadId) return [];
-  const threadManagement = yield* Effect.serviceOption(
-    ThreadManagementService.ThreadManagementService,
-  );
-  if (Option.isNone(threadManagement)) return [];
-  return yield* threadManagement.value
-    .getThreadSnapshotWindow(threadId, {
-      rowLimit: CONTEXT_ROW_LIMIT,
-      userTurnLimit: CONTEXT_USER_TURN_LIMIT,
-    })
+  // The orchestrator, not ThreadManagementService, so context never triggers a legacy import.
+  const orchestrator = yield* Effect.serviceOption(Orchestrator.OrchestratorV2);
+  if (Option.isNone(orchestrator)) return [];
+  return yield* orchestrator.value
+    .getThreadSnapshotWindow(threadId, { rowLimit: CONTEXT_ROW_LIMIT })
     .pipe(
-      Effect.map((snapshot) => recentDictationConversation(snapshot.projection.turnItems)),
+      // Visible items include a fork's inherited conversation.
+      Effect.map((snapshot) => recentDictationConversation(snapshot.projection.visibleTurnItems)),
       Effect.timeout(CONTEXT_TIMEOUT),
       // Context only improves spelling; a missing or slow thread must not fail dictation.
       Effect.orElseSucceed(() => []),
@@ -142,18 +142,24 @@ const cleanTranscript = Effect.fn("SpeechToText.cleanTranscript")(function* (
   transcript: string,
   threadId: ThreadId | null,
 ) {
-  const conversation = settings.speechToText.cleanup.useThreadContext
-    ? yield* readDictationConversation(threadId)
-    : [];
+  const cleanup = settings.speechToText.cleanup;
+  const conversation =
+    cleanup.useThreadContext && cleanup.mode === "openai-compatible"
+      ? yield* readDictationConversation(threadId)
+      : [];
   const textGeneration = yield* Effect.serviceOption(TextGeneration.TextGeneration);
-  const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
+  // An empty directory: the rewrite needs no checkout, and agent CLIs read their working tree.
+  const fileSystem = yield* FileSystem.FileSystem;
+  const cwd = yield* fileSystem
+    .makeTempDirectoryScoped({ prefix: "t3code-dictation-" })
+    .pipe(Effect.orElseSucceed(() => NodeOS.tmpdir()));
   return yield* cleanDictation({
     settings: settings.speechToText,
     transcript,
     conversation,
     textGenerationModel: settings.textGenerationModelSelection,
     textGeneration: Option.getOrNull(textGeneration),
-    cwd: Option.match(config, { onNone: () => process.cwd(), onSome: (value) => value.cwd }),
+    cwd,
   }).pipe(
     Effect.map((text) => jsonResponse(200, { text })),
     Effect.catchTags({
@@ -209,7 +215,9 @@ export const layerSpeechToTextRoute = HttpRouter.add(
         Effect.flatMap((transcript) =>
           settings.value.speechToText.cleanup.mode === null
             ? Effect.succeed(jsonResponse(200, { text: transcript }))
-            : cleanTranscript(settings.value, transcript, claims.threadId ?? null),
+            : cleanTranscript(settings.value, transcript, claims.threadId ?? null).pipe(
+                Effect.scoped,
+              ),
         ),
         Effect.catchTags({
           SpeechToTextFailure: (failure: SpeechToTextFailure) =>

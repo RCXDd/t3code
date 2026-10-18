@@ -464,6 +464,9 @@ export function buildThreadTitlePrompt(input: ThreadTitlePromptInput) {
   return { prompt, outputSchema };
 }
 
+/** Callers skip cleanup above this, so a rewrite never replaces a transcript it did not see. */
+export const DICTATION_CLEANUP_MAX_TRANSCRIPT_CHARS = 20_000;
+
 export interface DictationCleanupPromptInput {
   readonly transcript: string;
   readonly language: string;
@@ -510,7 +513,9 @@ export function buildDictationCleanupPrompt(
     );
   }
   if (input.language) sections.push(`Language: ${input.language}`);
-  sections.push(`Transcript:\n${limitSection(input.transcript, 20_000)}`);
+  sections.push(
+    `Transcript:\n${limitSection(input.transcript, DICTATION_CLEANUP_MAX_TRANSCRIPT_CHARS)}`,
+  );
   sections.push(
     replyFormat === "json"
       ? "Return a JSON object with one key, text: the cleaned message."

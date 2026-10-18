@@ -33,6 +33,7 @@ export function environmentVoiceTranscriptionAvailable(environmentId: Environmen
 export function getEnvironmentVoiceTranscriber(
   environmentId: EnvironmentId,
   threadId: ThreadId | null,
+  onCleanupError: (message: string) => void,
 ): VoiceTranscriber | null {
   if (!environmentVoiceTranscriptionAvailable(environmentId)) return null;
   const config = appAtomRegistry.get(serverEnvironment.configValueAtom(environmentId));
@@ -77,8 +78,7 @@ export function getEnvironmentVoiceTranscriber(
       if (!url) throw new Error("This environment is not connected.");
       return url;
     },
-    // Mobile has no app-wide toast yet; the transcript is still inserted.
-    onCleanupError: (message) => console.warn(`Dictation cleanup failed: ${message}`),
+    onCleanupError,
     upload: async ({ url, uri, mimeType, signal }) => {
       const { File, UploadType } = await import("expo-file-system");
       const result = await new File(uri).upload(url, {

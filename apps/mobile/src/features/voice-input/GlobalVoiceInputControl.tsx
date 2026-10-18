@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FullWindowOverlay } from "react-native-screens";
 
 import { AppText as Text } from "../../components/ui/AppText";
+import { Toast } from "../../components/ui/Toast";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
 import { cn } from "../../lib/cn";
@@ -53,7 +54,28 @@ export function GlobalVoiceInputControl(props: { readonly children: ReactNode })
         {props.children}
       </View>
       {pill && Platform.OS === "ios" ? <FullWindowOverlay>{pill}</FullWindowOverlay> : pill}
+      {voice.cleanupNotice ? (
+        <CleanupNotice message={voice.cleanupNotice} onDismiss={voice.dismissCleanupNotice} />
+      ) : null}
     </>
+  );
+}
+
+function CleanupNotice(props: { readonly message: string; readonly onDismiss: () => void }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <Animated.View
+      entering={ENTERING}
+      className="absolute inset-x-3"
+      style={{ top: insets.top + 8 }}
+      pointerEvents="box-none"
+    >
+      <Toast
+        message="Inserted the transcript without cleanup"
+        description={props.message}
+        onDismiss={props.onDismiss}
+      />
+    </Animated.View>
   );
 }
 
