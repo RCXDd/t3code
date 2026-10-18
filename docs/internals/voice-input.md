@@ -35,3 +35,9 @@ them to the provider and answers with the transcript. The URL is the credential,
 as with attachment uploads, so the same request works for local, remote, and
 relayed connections without each client building auth headers. The claims pin
 the size and MIME type, and the route caps the body at that size.
+
+Cleanup runs on the server after transcription, inside the same request, so every
+client gets it without another round trip. It is best-effort: a failed or empty
+rewrite returns the raw transcript with `cleanupError` rather than failing the
+dictation. The thread context is reference data for spelling; the prompt tells the
+model not to follow it, because it can contain agent output.

@@ -5,7 +5,11 @@ import {
   environmentSpeechToTextAvailable,
   type VoiceTranscriber,
 } from "@t3tools/client-runtime/voice-input";
-import { AuthOrchestrationOperateScope, type EnvironmentId } from "@t3tools/contracts";
+import {
+  AuthOrchestrationOperateScope,
+  type EnvironmentId,
+  type ThreadId,
+} from "@t3tools/contracts";
 import * as Option from "effect/Option";
 
 import { appAtomRegistry } from "../../state/atom-registry";
@@ -27,6 +31,7 @@ export function environmentVoiceTranscriptionAvailable(environmentId: Environmen
 /** Sends recordings to the environment when it has a speech-to-text service set up. */
 export function getEnvironmentVoiceTranscriber(
   environmentId: EnvironmentId,
+  threadId: ThreadId | null,
 ): VoiceTranscriber | null {
   if (!environmentVoiceTranscriptionAvailable(environmentId)) return null;
   const config = appAtomRegistry.get(serverEnvironment.configValueAtom(environmentId));
@@ -41,7 +46,7 @@ export function getEnvironmentVoiceTranscriber(
       const result = await runAtomCommand(
         appAtomRegistry,
         serverEnvironment.createSpeechToTextUploadUrl,
-        { environmentId, input },
+        { environmentId, input: { ...input, ...(threadId ? { threadId } : {}) } },
         { reportFailure: false },
       );
       if (result._tag !== "Success") {

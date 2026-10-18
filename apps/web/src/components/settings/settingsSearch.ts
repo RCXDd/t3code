@@ -594,6 +594,44 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["dictation voice speech whisper prompt words names spelling"],
   },
   {
+    id: "speech-to-text-cleanup",
+    title: "Dictation cleanup",
+    to: "/settings/speech-to-text",
+    searchTerms: [
+      "dictation voice speech rewrite clean filler words grammar wispr flow llm ollama",
+    ],
+  },
+  {
+    id: "speech-to-text-cleanup-base-url",
+    title: "Cleanup server URL",
+    to: "/settings/speech-to-text",
+    searchTerms: ["dictation cleanup ollama lm studio local llm endpoint"],
+  },
+  {
+    id: "speech-to-text-cleanup-model",
+    title: "Cleanup model",
+    to: "/settings/speech-to-text",
+    searchTerms: ["dictation cleanup qwen gemma llama local llm"],
+  },
+  {
+    id: "speech-to-text-cleanup-api-key",
+    title: "Cleanup API key",
+    to: "/settings/speech-to-text",
+    searchTerms: ["dictation cleanup key token secret"],
+  },
+  {
+    id: "speech-to-text-cleanup-instructions",
+    title: "Cleanup instructions",
+    to: "/settings/speech-to-text",
+    searchTerms: ["dictation cleanup tone style rules"],
+  },
+  {
+    id: "speech-to-text-cleanup-context",
+    title: "Use thread context",
+    to: "/settings/speech-to-text",
+    searchTerms: ["dictation cleanup conversation names spelling context"],
+  },
+  {
     id: "diagnostics",
     title: "Diagnostics",
     to: "/settings/general",

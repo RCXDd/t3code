@@ -164,8 +164,9 @@ function useVoiceInputRuntime() {
       getTranscriber: () => {
         const environmentId = sessionRef.current?.environmentId ?? null;
         return (
-          (environmentId ? getEnvironmentVoiceTranscriber(environmentId) : null) ??
-          getLocalVoiceTranscriber()
+          (environmentId
+            ? getEnvironmentVoiceTranscriber(environmentId, sessionRef.current?.threadId ?? null)
+            : null) ?? getLocalVoiceTranscriber()
         );
       },
       requestPermission: async () => {

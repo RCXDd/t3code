@@ -3,6 +3,7 @@ import {
   ClaudeSettings,
   CodexSettings,
   type ServerSettings,
+  SpeechToTextCleanupSettings,
   SpeechToTextProviderSettings,
   UsageLimitSourceConfig,
   secretSettingsFields,
@@ -33,6 +34,7 @@ const providerSecretFields = new Map([
 ]);
 const usageLimitSecretFields = secretSettingsFields(UsageLimitSourceConfig);
 const speechToTextSecretFields = secretSettingsFields(SpeechToTextProviderSettings);
+const speechToTextCleanupSecretFields = secretSettingsFields(SpeechToTextCleanupSettings);
 const encode = (value: string) => Buffer.from(value, "utf8").toString("base64url");
 
 export interface SettingsSecret {
@@ -160,6 +162,14 @@ export function mapSettingsSecrets(
     providerInstances,
     sourceControlHosts,
     usageLimitSources,
-    speechToText: { ...settings.speechToText, providers: speechToTextProviders },
+    speechToText: {
+      ...settings.speechToText,
+      providers: speechToTextProviders,
+      cleanup: mapFields(
+        settings.speechToText.cleanup,
+        speechToTextCleanupSecretFields,
+        (field) => `speech-to-text-cleanup-${encode(field)}`,
+      ) as ServerSettings["speechToText"]["cleanup"],
+    },
   };
 }

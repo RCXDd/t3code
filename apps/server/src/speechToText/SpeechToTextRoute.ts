@@ -1,5 +1,7 @@
 import {
   isSpeechToTextConfigured,
+  type ServerSettings,
+  ThreadId,
   SPEECH_TO_TEXT_UPLOAD_URL_TTL_MS,
   type SpeechToTextCreateUploadUrlInput,
   SpeechToTextUnavailableError,
@@ -19,7 +21,16 @@ import {
   timingSafeEqualBase64Url,
 } from "../auth/utils.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
+import * as ServerConfig from "../config.ts";
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
+import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import * as TextGeneration from "../textGeneration/TextGeneration.ts";
+import {
+  cleanDictation,
+  recentDictationConversation,
+  SpeechToTextCleanupFailure,
+} from "./SpeechToTextCleanup.ts";
 import { SpeechToTextFailure, transcribeSpeech } from "./SpeechToText.ts";
 
 export const SPEECH_TO_TEXT_ROUTE_PREFIX = "/api/speech-to-text/transcriptions";
@@ -34,6 +45,7 @@ const UploadClaims = Schema.Struct({
   mimeType: Schema.String,
   sizeBytes: Schema.Number,
   expiresAt: Schema.Number,
+  threadId: Schema.optionalKey(ThreadId),
 });
 type UploadClaims = typeof UploadClaims.Type;
 
@@ -65,6 +77,7 @@ export const issueSpeechToTextUploadUrl = Effect.fn("SpeechToText.issueUploadUrl
       mimeType: input.mimeType,
       sizeBytes: input.sizeBytes,
       expiresAt,
+      ...(input.threadId ? { threadId: input.threadId } : {}),
     }),
   );
   return {
@@ -97,6 +110,55 @@ const jsonResponse = (status: number, body: Record<string, string>) =>
     status,
     headers: { "cache-control": "private, no-store" },
   });
+
+const readDictationConversation = Effect.fn("SpeechToText.readDictationConversation")(function* (
+  threadId: ThreadId | null,
+) {
+  if (!threadId) return [];
+  const threadManagement = yield* Effect.serviceOption(
+    ThreadManagementService.ThreadManagementService,
+  );
+  const identity = yield* Effect.serviceOption(ServerEnvironment.ServerEnvironmentIdentity);
+  if (Option.isNone(threadManagement) || Option.isNone(identity)) return [];
+  return yield* threadManagement.value.getThreadTranscript(threadId).pipe(
+    Effect.provideService(ServerEnvironment.ServerEnvironmentIdentity, identity.value),
+    Effect.map(recentDictationConversation),
+    // Context only improves spelling; a missing or oversized thread must not fail dictation.
+    Effect.orElseSucceed(() => []),
+  );
+});
+
+/** A failed cleanup still inserts the raw transcript, and reports why it was not cleaned. */
+const cleanTranscript = Effect.fn("SpeechToText.cleanTranscript")(function* (
+  settings: ServerSettings,
+  transcript: string,
+  threadId: ThreadId | null,
+) {
+  const conversation = settings.speechToText.cleanup.useThreadContext
+    ? yield* readDictationConversation(threadId)
+    : [];
+  const textGeneration = yield* Effect.serviceOption(TextGeneration.TextGeneration);
+  const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
+  return yield* cleanDictation({
+    settings: settings.speechToText,
+    transcript,
+    conversation,
+    textGenerationModel: settings.textGenerationModelSelection,
+    textGeneration: Option.getOrNull(textGeneration),
+    cwd: Option.match(config, { onNone: () => process.cwd(), onSome: (value) => value.cwd }),
+  }).pipe(
+    Effect.map((text) => jsonResponse(200, { text })),
+    Effect.catchTags({
+      SpeechToTextCleanupFailure: (failure: SpeechToTextCleanupFailure) =>
+        Effect.as(
+          Effect.logWarning("Dictation cleanup failed; returning the raw transcript.", {
+            message: failure.message,
+          }),
+          jsonResponse(200, { text: transcript, cleanupError: failure.message }),
+        ),
+    }),
+  );
+});
 
 export const layerSpeechToTextRoute = HttpRouter.add(
   "POST",
@@ -136,7 +198,11 @@ export const layerSpeechToTextRoute = HttpRouter.add(
         bytes: body.value,
         mimeType: claims.mimeType,
       }).pipe(
-        Effect.map((text) => jsonResponse(200, { text })),
+        Effect.flatMap((transcript) =>
+          settings.value.speechToText.cleanup.mode === null
+            ? Effect.succeed(jsonResponse(200, { text: transcript }))
+            : cleanTranscript(settings.value, transcript, claims.threadId ?? null),
+        ),
         Effect.catchTags({
           SpeechToTextFailure: (failure: SpeechToTextFailure) =>
             Effect.as(
