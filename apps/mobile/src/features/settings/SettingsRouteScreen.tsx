@@ -268,6 +268,7 @@ function useSettingsIndexSections(): SettingsListSection[] {
         serverPage("SettingsEnvironmentNewThreads", "text.bubble", "New threads"),
         serverPage("SettingsEnvironmentSourceControl", "arrow.triangle.branch", "Source control"),
         serverPage("SettingsEnvironmentAgentBehavior", "text.alignleft", "Agent behavior"),
+        serverPage("SettingsSpeechToText", "mic", "Speech to text"),
         serverPage("SettingsEnvironmentMaintenance", "arrow.clockwise", "Maintenance"),
       ],
     },

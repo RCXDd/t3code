@@ -45,6 +45,7 @@ const SETTINGS_SEARCH_TERMS = {
   SettingsFollowUp: ["queue", "steer", "while the agent is running"],
   SettingsArchive: ["archive", "archived", "restore", "unarchive"],
   SettingsProviderAccounts: ["codex", "claude", "cursor", "opencode", "sign in", "login", "auth"],
+  SettingsSpeechToText: ["dictation", "transcription", "voice", "whisper", "parakeet", "api key"],
   SettingsEnvironmentNewThreads: [
     "default workspace",
     "worktree",
