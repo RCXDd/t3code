@@ -189,6 +189,30 @@ describe("transcribeSpeech", () => {
     }),
   );
 
+  it.effect("never repeats the configured key from a provider error", () =>
+    Effect.gen(function* () {
+      const http = HttpClient.make((request) =>
+        Effect.succeed(
+          HttpClientResponse.fromWeb(
+            request,
+            Response.json(
+              { error: { message: "Invalid API key: gsk-secret-123" } },
+              { status: 401 },
+            ),
+          ),
+        ),
+      );
+      const failure = yield* transcribeSpeech(
+        settings({ provider: "groq", providers: { groq: { apiKey: "gsk-secret-123" } } }),
+        { bytes: new Uint8Array([1]), mimeType: "audio/webm" },
+      ).pipe(Effect.provideService(HttpClient.HttpClient, http), Effect.flip);
+      expect(failure.message).not.toContain("gsk-secret-123");
+      expect(failure.message).toBe(
+        "Groq rejected the recording (HTTP 401): Invalid API key: [redacted]",
+      );
+    }),
+  );
+
   it.effect("fails with the provider's message instead of an empty transcript", () =>
     Effect.gen(function* () {
       const http = HttpClient.make((request) =>

@@ -13,6 +13,7 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 import * as Queue from "effect/Queue";
+import * as Tracer from "effect/Tracer";
 import { HttpClient, HttpClientRequest, HttpRouter, HttpServerResponse } from "effect/http";
 import { openMediaFile } from "./assets/MediaFile.ts";
 
@@ -28,6 +29,7 @@ import * as ServerConfig from "./config.ts";
 
 import { assetResponseHeaders, assetFileResponse, downloadContentDisposition } from "./http.ts";
 import * as ServerHttp from "./http.ts";
+import { withUntracedRequests } from "./http.ts";
 
 describe("MCP app asset responses", () => {
   it.effect(
@@ -91,6 +93,52 @@ describe("MCP app asset responses", () => {
       expect(response.status).toBe(413);
     }).pipe(Effect.provide(layerFileResponse)),
   );
+});
+
+describe("untraced requests", () => {
+  it.effect("drops the HTTP server span for browser trace exports, query string included", () => {
+    const spanNames: Array<string> = [];
+    return Effect.gen(function* () {
+      const layerRoutes = Layer.effectDiscard(
+        Effect.gen(function* () {
+          const router = yield* HttpRouter.HttpRouter;
+          yield* router.add("POST", "/api/observability/v1/traces", HttpServerResponse.empty());
+          yield* router.add(
+            "POST",
+            "/api/speech-to-text/transcriptions/*",
+            HttpServerResponse.empty(),
+          );
+          yield* router.add("GET", "/api/environment", HttpServerResponse.empty());
+        }),
+      );
+      const services = yield* Layer.build(
+        withUntracedRequests(HttpRouter.serve(layerRoutes, { disableListenLog: true })).pipe(
+          Layer.provideMerge(NodeHttpServer.layerTest),
+        ),
+      );
+      const client = Context.get(services, HttpClient.HttpClient);
+
+      yield* client.post("/api/observability/v1/traces");
+      yield* client.post("/api/observability/v1/traces?x=1");
+      // The signed upload token is the path's last segment.
+      yield* client.post("/api/speech-to-text/transcriptions/payload.signature");
+      expect(spanNames).toEqual([]);
+
+      yield* client.get("/api/environment");
+      expect(spanNames).toEqual(["GET"]);
+    }).pipe(
+      Effect.scoped,
+      Effect.provideService(
+        Tracer.Tracer,
+        Tracer.make({
+          span: (options) => {
+            if (options.kind === "server") spanNames.push(options.name);
+            return new Tracer.NativeSpan(options);
+          },
+        }),
+      ),
+    );
+  });
 });
 
 describe("browser API CORS", () => {

@@ -43,6 +43,8 @@ export class WebVoiceRecorder implements VoiceRecorder {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private samples: Float32Array<ArrayBuffer> | null = null;
+  // Bumped by release(), so a permission prompt answered after cancel cannot keep the mic open.
+  private generation = 0;
   private readonly onStatus: (status: VoiceRecorderStatus) => void;
 
   constructor(onStatus: (status: VoiceRecorderStatus) => void) {
@@ -52,11 +54,17 @@ export class WebVoiceRecorder implements VoiceRecorder {
   /** Opens the microphone; the browser asks for permission on first use. */
   async requestPermission(): Promise<{ granted: boolean; canAskAgain: boolean }> {
     if (this.stream) return { granted: true, canAskAgain: true };
+    const generation = this.generation;
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
-      for (const track of this.stream.getAudioTracks()) {
+      if (generation !== this.generation) {
+        for (const track of stream.getTracks()) track.stop();
+        return { granted: false, canAskAgain: true };
+      }
+      this.stream = stream;
+      for (const track of stream.getAudioTracks()) {
         track.addEventListener("ended", () => this.fail("The microphone was disconnected."));
       }
       return { granted: true, canAskAgain: true };
@@ -116,6 +124,7 @@ export class WebVoiceRecorder implements VoiceRecorder {
 
   /** Closes the microphone so the browser's recording indicator goes away. */
   async release(): Promise<void> {
+    this.generation += 1;
     this.clearLimit();
     for (const track of this.stream?.getTracks() ?? []) track.stop();
     this.stream = null;
