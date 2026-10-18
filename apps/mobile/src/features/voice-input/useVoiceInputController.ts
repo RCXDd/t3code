@@ -83,7 +83,7 @@ export function useVoiceInputController(input: {
   const isBusy = voiceInputBlocksSubmission(state);
   return {
     isAvailable:
-      (global.isAvailable || environmentAvailable) &&
+      (global.isLocallyAvailable || environmentAvailable) &&
       (!global.isBusy || global.ownerKey === input.ownerKey),
     state,
     audioLevels: global.audioLevels,

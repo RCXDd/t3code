@@ -407,6 +407,20 @@ const layerUntracedRequests = Layer.succeed(HttpMiddleware.TracerDisabledWhen)((
 
 export const withUntracedRequests = Layer.provide(layerUntracedRequests);
 
+/**
+ * Passed as HttpRouter.serve's middleware, which runs inside the access logger and before CORS,
+ * so preflights for token-bearing dictation upload URLs are kept out of the log as well.
+ */
+export const withUnloggedCredentialRequests = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R | HttpServerRequest.HttpServerRequest> =>
+  Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    return yield* request.url.startsWith(`${SPEECH_TO_TEXT_ROUTE_PREFIX}/`)
+      ? HttpMiddleware.withLoggerDisabled(effect)
+      : effect;
+  });
+
 export const layerAssetRoute = HttpRouter.add(
   "GET",
   `${ASSET_ROUTE_PREFIX}/*`,

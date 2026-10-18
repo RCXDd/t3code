@@ -260,14 +260,16 @@ function useVoiceInputRuntime() {
     return () => clearInterval(intervalId);
   }, [audioLevels, controller, recorder, state.phase]);
 
+  const locallyAvailable = getLocalVoiceTranscriber() !== null || getNativeShowcaseScene() !== null;
   const stop = useCallback(() => controller.stop(), [controller]);
   const cancel = useCallback(() => controller.cancel(), [controller]);
 
   return {
-    // The session's environment counts too, so Android keeps Retry after an error.
+    // Composers add their own environment to this; the session's environment only keeps the
+    // global controls (Retry, microphone settings) usable for the session it belongs to.
+    isLocallyAvailable: locallyAvailable,
     isAvailable:
-      getLocalVoiceTranscriber() !== null ||
-      getNativeShowcaseScene() !== null ||
+      locallyAvailable ||
       (environmentId !== null && environmentVoiceTranscriptionAvailable(environmentId)),
     state,
     audioLevels,

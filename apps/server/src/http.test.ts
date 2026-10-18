@@ -10,6 +10,8 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
+import * as References from "effect/References";
 import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Tracer from "effect/Tracer";
@@ -141,6 +143,64 @@ describe("untraced requests", () => {
             return new Tracer.NativeSpan(options);
           },
         }),
+      ),
+    );
+  });
+});
+
+describe("unlogged credential requests", () => {
+  it.effect("keeps dictation upload tokens out of the access log, preflights included", () => {
+    const logged: Array<string> = [];
+    const token = "payload.signature-secret";
+    return Effect.gen(function* () {
+      const layerRoutes = Layer.mergeAll(
+        Layer.effectDiscard(
+          Effect.gen(function* () {
+            const router = yield* HttpRouter.HttpRouter;
+            yield* router.add(
+              "POST",
+              "/api/speech-to-text/transcriptions/*",
+              HttpServerResponse.empty(),
+            );
+            yield* router.add("GET", "/api/environment", HttpServerResponse.empty());
+          }),
+        ),
+        HttpRouter.cors({ allowedOrigins: ["https://app.example"] }),
+      );
+      const services = yield* Layer.build(
+        HttpRouter.serve(layerRoutes, {
+          disableListenLog: true,
+          middleware: ServerHttp.withUnloggedCredentialRequests,
+        }).pipe(Layer.provideMerge(NodeHttpServer.layerTest)),
+      );
+      const client = Context.get(services, HttpClient.HttpClient);
+      const path = `/api/speech-to-text/transcriptions/${token}`;
+
+      yield* client.execute(
+        HttpClientRequest.make("OPTIONS")(path).pipe(
+          HttpClientRequest.setHeaders({
+            origin: "https://app.example",
+            "access-control-request-method": "POST",
+            "access-control-request-headers": "content-type",
+          }),
+        ),
+      );
+      yield* client.post(path);
+      yield* client.get("/api/environment");
+
+      expect(logged.some((line) => line.includes("/api/environment"))).toBe(true);
+      expect(logged.filter((line) => line.includes(token))).toEqual([]);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Logger.layer(
+          [
+            Logger.make(({ fiber }) => {
+              logged.push(JSON.stringify(fiber.getRef(References.CurrentLogAnnotations)));
+            }),
+          ],
+          { mergeWithExisting: false },
+        ),
       ),
     );
   });

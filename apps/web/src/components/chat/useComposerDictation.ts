@@ -143,6 +143,11 @@ export function useComposerDictation(input: {
 
   useEffect(() => () => controller.dispose(), [controller]);
 
+  // Another client can turn the service off mid-recording; stop rather than keep the mic open.
+  useEffect(() => {
+    if (!available) controller.cancel();
+  }, [available, controller]);
+
   const ownerKey = input.ownerKey;
   const previousOwnerKey = useRef(ownerKey);
   useEffect(() => {
@@ -157,10 +162,12 @@ export function useComposerDictation(input: {
     toastManager.add({ type: "error", title: "Dictation failed", description: error });
   }, [error]);
 
+  const blocksSubmission = voiceInputBlocksSubmission(state);
   return {
-    available,
+    // An active session keeps its controls until it settles, even if the service went away.
+    available: available || blocksSubmission,
     state,
-    blocksSubmission: voiceInputBlocksSubmission(state),
+    blocksSubmission,
     recorder,
     start: () => void controller.start(),
     stop: () => void controller.stop(),
