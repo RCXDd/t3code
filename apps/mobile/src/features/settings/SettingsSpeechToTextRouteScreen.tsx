@@ -8,7 +8,7 @@ import {
   type SpeechToTextSettings,
   type SpeechToTextSettingsPatch,
 } from "@t3tools/contracts";
-import { useRef } from "react";
+import { useState } from "react";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -74,7 +74,11 @@ export function SettingsSpeechToTextRouteScreen() {
   );
 }
 
-/** Commits on end of editing, like the other text settings, so typing does not round-trip. */
+/**
+ * Commits on end of editing, like the other text settings, so typing does not round-trip. The
+ * field owns its draft while focused: a value another device saves only replaces it once the
+ * field is idle. A secret field never shows the stored key and clears after each commit.
+ */
 function SettingsTextField(props: {
   readonly label: string;
   readonly description?: string;
@@ -85,7 +89,14 @@ function SettingsTextField(props: {
   readonly keyboardType?: "default" | "url";
   readonly onCommit: (value: string) => void;
 }) {
-  const edited = useRef(false);
+  const initial = props.secure ? "" : props.value;
+  const [draft, setDraft] = useState(initial);
+  const [focused, setFocused] = useState(false);
+  const [syncedValue, setSyncedValue] = useState(initial);
+  if (!focused && initial !== syncedValue) {
+    setSyncedValue(initial);
+    setDraft(initial);
+  }
   return (
     <View className="gap-2 px-4 py-3">
       <Text className="text-sm text-foreground">{props.label}</Text>
@@ -93,9 +104,8 @@ function SettingsTextField(props: {
         <Text className="text-sm text-foreground-muted">{props.description}</Text>
       ) : null}
       <AppTextInput
-        key={props.secure ? "secret" : props.value}
         accessibilityLabel={props.label}
-        defaultValue={props.secure ? "" : props.value}
+        value={draft}
         placeholder={props.placeholder}
         editable={!props.disabled}
         secureTextEntry={props.secure}
@@ -103,16 +113,19 @@ function SettingsTextField(props: {
         autoCapitalize="none"
         autoCorrect={false}
         className="min-h-10 rounded-xl px-3 py-2 text-base text-foreground"
-        onChangeText={() => {
-          edited.current = true;
-        }}
-        onEndEditing={(event) => {
-          const value = event.nativeEvent.text.trim();
-          // A stored key is replaced only by a new value; removing it is its own action.
-          if (!props.disabled && edited.current && (props.secure ? value.length > 0 : true)) {
-            if (props.secure || value !== props.value) props.onCommit(value);
+        onFocus={() => setFocused(true)}
+        onChangeText={setDraft}
+        onEndEditing={() => {
+          setFocused(false);
+          const value = draft.trim();
+          if (props.secure) {
+            // A stored key is replaced only by a new value; removing it is its own action.
+            if (!props.disabled && value.length > 0) props.onCommit(value);
+            setDraft("");
+            return;
           }
-          edited.current = false;
+          if (!props.disabled && value !== props.value) props.onCommit(value);
+          setDraft(value);
         }}
       />
     </View>
@@ -177,6 +190,7 @@ function EnvironmentSpeechToText({ environment }: { readonly environment: Settin
       {provider && info && configured ? (
         <SettingsSection title={info.label}>
           <SettingsTextField
+            key={`${provider}-api-key`}
             label="API key"
             description={
               info.apiKeyRequired
@@ -200,6 +214,7 @@ function EnvironmentSpeechToText({ environment }: { readonly environment: Settin
           ) : null}
           {provider !== "xai" ? (
             <SettingsTextField
+              key={`${provider}-model`}
               label="Model"
               description={
                 info.suggestedModels.length > 0
@@ -215,6 +230,7 @@ function EnvironmentSpeechToText({ environment }: { readonly environment: Settin
             />
           ) : null}
           <SettingsTextField
+            key={`${provider}-base-url`}
             label="Server URL"
             description={
               info.defaultBaseUrl
@@ -239,14 +255,16 @@ function EnvironmentSpeechToText({ environment }: { readonly environment: Settin
           disabled={disabled}
           onCommit={(language) => update({ language: language.toLowerCase() })}
         />
-        <SettingsTextField
-          label="Vocabulary"
-          description="Names and terms to spell correctly, separated by commas."
-          value={settings.prompt}
-          placeholder="T3 Code, TypeScript, Effect"
-          disabled={disabled}
-          onCommit={(prompt) => update({ prompt })}
-        />
+        {!info || info.supportsPrompt || cleanup.mode !== null ? (
+          <SettingsTextField
+            label="Vocabulary"
+            description="Names and terms to spell correctly, separated by commas."
+            value={settings.prompt}
+            placeholder="T3 Code, TypeScript, Effect"
+            disabled={disabled}
+            onCommit={(prompt) => update({ prompt })}
+          />
+        ) : null}
       </SettingsSection>
 
       <SettingsSection title="Cleanup">
