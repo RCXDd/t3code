@@ -132,16 +132,28 @@ export function resolveSpeechToTextRequest(
   }
 }
 
+/**
+ * Some services and proxies echo the submitted credential in authentication errors; their
+ * messages reach logs and clients, so the configured key is masked first.
+ */
+export function redactSpeechToTextSecret(message: string, apiKey: string): string {
+  return apiKey.length > 0 ? message.replaceAll(apiKey, "[redacted]") : message;
+}
+
 function readErrorDetail(body: string): string {
   try {
     const parsed: unknown = JSON.parse(body);
     if (parsed !== null && typeof parsed === "object") {
       const record = parsed as Record<string, unknown>;
       for (const candidate of [record.error, record.detail, record]) {
-        if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+        if (typeof candidate === "string" && candidate.trim()) {
+          return candidate.trim().slice(0, ERROR_DETAIL_MAX_LENGTH);
+        }
         if (candidate !== null && typeof candidate === "object") {
           const message = (candidate as Record<string, unknown>).message;
-          if (typeof message === "string" && message.trim()) return message.trim();
+          if (typeof message === "string" && message.trim()) {
+            return message.trim().slice(0, ERROR_DETAIL_MAX_LENGTH);
+          }
         }
       }
     }
@@ -218,6 +230,12 @@ export const transcribeSpeech = Effect.fn("SpeechToText.transcribe")(function* (
     );
 
   const transcript = parseSpeechToTextResponse(request.provider, response.status, response.body);
-  if (transcript instanceof SpeechToTextFailure) return yield* transcript;
+  if (transcript instanceof SpeechToTextFailure) {
+    const apiKey = resolveSpeechToTextProviderSettings(settings, request.provider).apiKey;
+    return yield* new SpeechToTextFailure({
+      status: transcript.status,
+      message: redactSpeechToTextSecret(transcript.message, apiKey),
+    });
+  }
   return transcript;
 });

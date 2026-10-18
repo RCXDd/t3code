@@ -108,6 +108,11 @@ describe("untraced requests", () => {
         Effect.gen(function* () {
           const router = yield* HttpRouter.HttpRouter;
           yield* router.add("POST", "/api/observability/v1/traces", HttpServerResponse.empty());
+          yield* router.add(
+            "POST",
+            "/api/speech-to-text/transcriptions/*",
+            HttpServerResponse.empty(),
+          );
           yield* router.add("GET", "/api/environment", HttpServerResponse.empty());
         }),
       );
@@ -120,6 +125,8 @@ describe("untraced requests", () => {
 
       yield* client.post("/api/observability/v1/traces");
       yield* client.post("/api/observability/v1/traces?x=1");
+      // The signed upload token is the path's last segment.
+      yield* client.post("/api/speech-to-text/transcriptions/payload.signature");
       expect(spanNames).toEqual([]);
 
       yield* client.get("/api/environment");
