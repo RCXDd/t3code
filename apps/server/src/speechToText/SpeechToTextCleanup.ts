@@ -1,6 +1,6 @@
 import type {
   ModelSelection,
-  OrchestrationV2ThreadTranscript,
+  OrchestrationV2TurnItem,
   SpeechToTextSettings,
 } from "@t3tools/contracts";
 import { buildDictationCleanupPrompt } from "@t3tools/provider-core/server/textGenerationPrompts";
@@ -25,10 +25,10 @@ export type DictationConversation = ReadonlyArray<{
 
 /** The last few chat messages; tool calls and reasoning carry no spelling the user dictates. */
 export function recentDictationConversation(
-  transcript: OrchestrationV2ThreadTranscript,
+  items: ReadonlyArray<OrchestrationV2TurnItem>,
 ): DictationConversation {
   const messages: Array<{ role: "user" | "assistant"; text: string }> = [];
-  for (const { item } of transcript.items) {
+  for (const item of items) {
     if (item.type !== "user_message" && item.type !== "assistant_message") continue;
     const text = item.text.trim();
     if (!text) continue;
@@ -76,9 +76,7 @@ const cleanWithChatCompletions = Effect.fn("SpeechToText.cleanWithChatCompletion
         HttpClientRequest.bodyJsonUnsafe({
           model: cleanup.model,
           temperature: 0,
-          messages: [
-            { role: "user", content: `${prompt}\n\nReply with only the cleaned message.` },
-          ],
+          messages: [{ role: "user", content: prompt }],
         }),
       ),
     )
@@ -128,7 +126,7 @@ export const cleanDictation = Effect.fn("SpeechToText.cleanDictation")(function*
   if (cleanup.mode === "openai-compatible") {
     cleaned = yield* cleanWithChatCompletions(
       cleanup,
-      buildDictationCleanupPrompt(promptInput).prompt,
+      buildDictationCleanupPrompt(promptInput, "text").prompt,
     );
   } else {
     const runCleanup = input.textGeneration?.cleanDictation;

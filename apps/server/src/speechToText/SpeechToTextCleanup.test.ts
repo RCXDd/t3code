@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   ProviderInstanceId,
   SpeechToTextSettings,
-  type OrchestrationV2ThreadTranscript,
+  type OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -31,16 +31,14 @@ const baseInput = {
 describe("recentDictationConversation", () => {
   it("keeps the last chat messages and drops tool output", () => {
     const message = (type: "user_message" | "assistant_message" | "reasoning", text: string) =>
-      ({ item: { type, text } }) as unknown as OrchestrationV2ThreadTranscript["items"][number];
-    const transcript = {
-      items: [
-        message("user_message", "first"),
-        message("reasoning", "thinking"),
-        ...Array.from({ length: 6 }, (_, index) => message("assistant_message", `reply ${index}`)),
-        message("user_message", "  "),
-      ],
-    } as unknown as OrchestrationV2ThreadTranscript;
-    expect(recentDictationConversation(transcript)).toEqual(
+      ({ type, text }) as unknown as OrchestrationV2TurnItem;
+    const items = [
+      message("user_message", "first"),
+      message("reasoning", "thinking"),
+      ...Array.from({ length: 6 }, (_, index) => message("assistant_message", `reply ${index}`)),
+      message("user_message", "  "),
+    ];
+    expect(recentDictationConversation(items)).toEqual(
       Array.from({ length: 6 }, (_, index) => ({ role: "assistant", text: `reply ${index}` })),
     );
   });
@@ -110,6 +108,8 @@ describe("cleanDictation", () => {
       expect(prompt).toContain("Agent: I added `SpeechToTextRoute.test.ts`.");
       expect(prompt).toContain("Language: de");
       expect(prompt).toContain(baseInput.transcript.trim());
+      expect(prompt).toContain("Reply with only the cleaned message.");
+      expect(prompt).not.toContain("JSON");
     }),
   );
 

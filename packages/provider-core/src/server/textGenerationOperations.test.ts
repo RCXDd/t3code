@@ -28,6 +28,10 @@ describe("fromRunner cleanDictation", () => {
       expect(requests[0]!.operation).toBe("cleanDictation");
       expect(requests[0]!.investigate).toBeUndefined();
       expect(requests[0]!.prompt).toContain("Transcript:\num run the the tests");
+      // Cursor, Grok, Pi, and OpenCode decode the reply as JSON, so the prompt must ask for it.
+      expect(requests[0]!.prompt).toContain(
+        "Return a JSON object with one key, text: the cleaned message.",
+      );
     }),
   );
 });

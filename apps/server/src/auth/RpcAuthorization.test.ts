@@ -331,6 +331,44 @@ it.effect("separates host file URLs from readable attachment URLs", () =>
   }).pipe(Effect.scoped),
 );
 
+it.effect("requires thread read access before dictation may use a thread as context", () =>
+  Effect.gen(function* () {
+    const group = WsRpcGroup.omit(
+      ...[...WsRpcGroup.requests.keys()].filter(
+        (
+          tag,
+        ): tag is Exclude<
+          keyof typeof RPC_REQUIRED_SCOPES,
+          typeof WS_METHODS.speechToTextCreateUploadUrl
+        > => tag !== WS_METHODS.speechToTextCreateUploadUrl,
+      ),
+    );
+    let handled = 0;
+    const client = yield* RpcTest.makeClient(group).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          group.toLayerHandler(WS_METHODS.speechToTextCreateUploadUrl, () =>
+            Effect.sync(() => {
+              handled++;
+              return { relativeUrl: "/api/speech-to-text/transcriptions/token", expiresAt: 1 };
+            }),
+          ),
+          RpcAuthorization.layer([AuthOrchestrationOperateScope]),
+        ),
+      ),
+    );
+    const upload = { mimeType: "audio/webm", sizeBytes: 1 };
+    yield* client[WS_METHODS.speechToTextCreateUploadUrl](upload);
+    expect(
+      yield* client[WS_METHODS.speechToTextCreateUploadUrl]({
+        ...upload,
+        threadId: ThreadId.make("thread"),
+      }).pipe(Effect.flip),
+    ).toMatchObject({ requiredScope: AuthOrchestrationReadScope });
+    expect(handled).toBe(1);
+  }).pipe(Effect.scoped),
+);
+
 it.effect("denies manual cleanup before the handler without settings permission", () =>
   Effect.gen(function* () {
     const group = WsRpcGroup.omit(

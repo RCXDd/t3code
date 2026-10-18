@@ -11,6 +11,7 @@ import {
 } from "@t3tools/client-runtime/voice-input";
 import {
   AuthOrchestrationOperateScope,
+  AuthOrchestrationReadScope,
   type EnvironmentId,
   type ThreadId,
 } from "@t3tools/contracts";
@@ -25,7 +26,11 @@ import {
 } from "../../lib/webVoiceRecorder";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { serverEnvironment } from "../../state/server";
-import { readPreparedConnection, useEnvironmentScope } from "../../state/session";
+import {
+  readEnvironmentScope,
+  readPreparedConnection,
+  useEnvironmentScope,
+} from "../../state/session";
 import { toastManager } from "../ui/toast";
 
 const IDLE_STATE: VoiceInputState = { phase: "idle", error: null, errorAction: null };
@@ -75,7 +80,13 @@ function createDictationSession(input: {
             serverEnvironment.createSpeechToTextUploadUrl,
             {
               environmentId,
-              input: { ...uploadInput, ...(threadId ? { threadId } : {}) },
+              input: {
+                ...uploadInput,
+                // Naming a thread needs read access; without it cleanup runs without context.
+                ...(threadId && readEnvironmentScope(environmentId, AuthOrchestrationReadScope)
+                  ? { threadId }
+                  : {}),
+              },
             },
             { reportFailure: false },
           );
@@ -91,6 +102,12 @@ function createDictationSession(input: {
           if (!url) throw new Error("This environment is not connected.");
           return url;
         },
+        onCleanupError: (message) =>
+          toastManager.add({
+            type: "warning",
+            title: "Inserted the transcript without cleanup",
+            description: message,
+          }),
         upload: async ({ url, uri, mimeType, signal }) => {
           const blob = readWebVoiceRecording(uri);
           if (!blob) throw new Error("The recording is no longer available.");
