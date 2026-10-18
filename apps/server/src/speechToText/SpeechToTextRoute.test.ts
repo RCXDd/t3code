@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -134,6 +135,54 @@ describe("SpeechToTextRoute cleanup", () => {
         text: "äh hallo",
         cleanupError: "Add the cleanup server URL and model in Settings → Speech to text.",
       });
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerWith({
+          speechToText: {
+            provider: "groq",
+            providers: { groq: { apiKey: "gsk" } },
+            cleanup: { mode: "openai-compatible" },
+          },
+        }),
+      ),
+    ),
+  );
+  it.effect("still answers when the temporary directory cannot be removed", () =>
+    Effect.gen(function* () {
+      const provider = HttpClient.make((request) =>
+        Effect.succeed(HttpClientResponse.fromWeb(request, Response.json({ text: "hallo" }))),
+      );
+      const issued = yield* issueSpeechToTextUploadUrl({ mimeType: "audio/webm", sizeBytes: 1 });
+      const context = yield* Effect.context<
+        ServerSecretStore.ServerSecretStore | ServerSettingsService | FileSystem.FileSystem
+      >();
+      const fileSystem = Context.get(context, FileSystem.FileSystem);
+      const { handler, dispose } = HttpRouter.toWebHandler(
+        layerSpeechToTextRoute.pipe(
+          Layer.provideMerge(
+            Layer.succeedContext(
+              Context.add(context, FileSystem.FileSystem, {
+                ...fileSystem,
+                remove: () => Effect.die(new Error("EBUSY")),
+              }),
+            ),
+          ),
+          Layer.provideMerge(Layer.succeed(HttpClient.HttpClient, provider)),
+        ),
+        { disableLogger: true },
+      );
+      yield* Effect.addFinalizer(() => Effect.promise(dispose));
+      const response = yield* Effect.promise(() =>
+        handler(
+          new Request(`http://t3.test${issued.relativeUrl}`, {
+            method: "POST",
+            body: new Uint8Array([1]),
+          }),
+        ),
+      );
+      expect(response.status).toBe(200);
+      expect(yield* Effect.promise(() => response.json())).toMatchObject({ text: "hallo" });
     }).pipe(
       Effect.scoped,
       Effect.provide(
