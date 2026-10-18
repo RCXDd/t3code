@@ -30,7 +30,11 @@ import {
   rememberMicrophones,
 } from "../../lib/microphonePriority";
 import { getLocalVoiceTranscriber } from "../../native/voiceTranscription";
-import { getEnvironmentVoiceTranscriber } from "./environmentVoiceTranscriber";
+import type { EnvironmentId } from "@t3tools/contracts";
+import {
+  environmentVoiceTranscriptionAvailable,
+  getEnvironmentVoiceTranscriber,
+} from "./environmentVoiceTranscriber";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { getNativeShowcaseScene } from "../showcase/nativeShowcaseScene";
 import {
@@ -101,10 +105,11 @@ function useVoiceInputRuntime() {
   const registry = use(RegistryContext);
   useAtomMount(mobilePreferencesAtom);
   useAtomMount(updateMobilePreferencesAtom);
-  const [{ state, ownerKey, label }, setState] = useState({
+  const [{ state, ownerKey, label, environmentId }, setState] = useState({
     state: INITIAL_STATE,
     ownerKey: null as string | null,
     label: null as string | null,
+    environmentId: null as EnvironmentId | null,
   });
   const [focusedOwners, setFocusedOwners] = useState<ReadonlySet<string>>(new Set());
   const setOwnerFocused = useCallback((key: string, focused: boolean) => {
@@ -175,6 +180,7 @@ function useVoiceInputRuntime() {
           state: nextState,
           ownerKey: sessionRef.current?.ownerKey ?? null,
           label: sessionRef.current?.label ?? null,
+          environmentId: sessionRef.current?.environmentId ?? null,
         }),
     });
   }
@@ -258,7 +264,11 @@ function useVoiceInputRuntime() {
   const cancel = useCallback(() => controller.cancel(), [controller]);
 
   return {
-    isAvailable: getLocalVoiceTranscriber() !== null || getNativeShowcaseScene() !== null,
+    // The session's environment counts too, so Android keeps Retry after an error.
+    isAvailable:
+      getLocalVoiceTranscriber() !== null ||
+      getNativeShowcaseScene() !== null ||
+      (environmentId !== null && environmentVoiceTranscriptionAvailable(environmentId)),
     state,
     audioLevels,
     elapsedSeconds,

@@ -2314,13 +2314,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     selectedProviderEntry?.snapshot,
     selectedModel,
   );
+  // The editor switches between the draft and each pending question's answer; a transcript
+  // must land where recording started, so each destination is its own owner.
+  const dictationOwnerKey = `${composerDraftTargetKey}:${pendingUserInputs[0]?.requestId ?? "draft"}:${
+    activePendingProgress?.activeQuestion?.id ?? ""
+  }`;
   const dictation = useComposerDictation({
     environmentId,
-    ownerKey: composerDraftTargetKey,
+    ownerKey: dictationOwnerKey,
     readDraft: () => {
       const text = promptRef.current;
       return {
-        ownerKey: composerDraftTargetKey,
+        ownerKey: dictationOwnerKey,
         text,
         selection: composerEditorRef.current?.readSelectionRange() ?? {
           start: text.length,
