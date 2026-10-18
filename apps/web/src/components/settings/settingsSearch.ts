@@ -25,6 +25,7 @@ export type SettingsPath =
   | "/settings/scheduled-tasks"
   | "/settings/source-control"
   | "/settings/storage"
+  | "/settings/speech-to-text"
   | "/settings/connections"
   | "/settings/archived";
 
@@ -83,6 +84,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/scheduled-tasks": "Scheduled Tasks",
   "/settings/source-control": "Source Control",
   "/settings/storage": "Storage",
+  "/settings/speech-to-text": "Speech to text",
   "/settings/connections": "Connections",
   "/settings/archived": "Archive",
 };
@@ -552,6 +554,46 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["OTel OTLP telemetry export endpoints logs traces metrics Grafana"],
   },
   {
+    id: "speech-to-text-provider",
+    title: "Transcription service",
+    to: "/settings/speech-to-text",
+    searchTerms: [
+      "dictation voice microphone speech to text transcribe whisper openai groq mistral voxtral xai grok elevenlabs scribe deepinfra",
+    ],
+  },
+  {
+    id: "speech-to-text-api-key",
+    title: "Transcription API key",
+    to: "/settings/speech-to-text",
+    searchTerms: ["dictation voice speech whisper key token secret"],
+  },
+  {
+    id: "speech-to-text-model",
+    title: "Transcription model",
+    to: "/settings/speech-to-text",
+    searchTerms: ["dictation voice speech whisper gpt-4o-transcribe scribe voxtral"],
+  },
+  {
+    id: "speech-to-text-base-url",
+    title: "Transcription server URL",
+    to: "/settings/speech-to-text",
+    searchTerms: [
+      "dictation voice speech whisper self-hosted local endpoint speaches faster-whisper",
+    ],
+  },
+  {
+    id: "speech-to-text-language",
+    title: "Dictation language",
+    to: "/settings/speech-to-text",
+    searchTerms: ["dictation voice speech whisper locale auto detect"],
+  },
+  {
+    id: "speech-to-text-prompt",
+    title: "Dictation vocabulary",
+    to: "/settings/speech-to-text",
+    searchTerms: ["dictation voice speech whisper prompt words names spelling"],
+  },
+  {
     id: "diagnostics",
     title: "Diagnostics",
     to: "/settings/general",
@@ -998,6 +1040,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/integrations": null,
   "/settings/source-control": "environment-defaults",
   "/settings/storage": "project-defaults",
+  "/settings/speech-to-text": null,
   "/settings/connections": "connections",
   "/settings/scheduled-tasks": null,
   "/settings/archived": "project-defaults",

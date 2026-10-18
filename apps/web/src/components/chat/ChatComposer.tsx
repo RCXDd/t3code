@@ -1,5 +1,7 @@
 import { formatProviderSkillDisplayName } from "@t3tools/shared/inlineSkills";
 import { useComposerTypingGuard } from "./useComposerTypingGuard";
+import { ComposerDictationControl } from "./ComposerDictationControl";
+import { useComposerDictation } from "./useComposerDictation";
 import { DESKTOP_PASTE_AS_TEXT_EVENT } from "../../lib/desktopPasteAsText";
 import { runtimeModeConfig, runtimeModeOptions as runtimeModes } from "./runtimeModeConfig";
 import { isLocalEnvironmentDisabled } from "../../localEnvironment";
@@ -2312,8 +2314,31 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     selectedProviderEntry?.snapshot,
     selectedModel,
   );
+  const dictation = useComposerDictation({
+    environmentId,
+    ownerKey: composerDraftTargetKey,
+    readDraft: () => {
+      const text = promptRef.current;
+      return {
+        ownerKey: composerDraftTargetKey,
+        text,
+        selection: composerEditorRef.current?.readSelectionRange() ?? {
+          start: text.length,
+          end: text.length,
+        },
+        // The editor is frozen while dictating, and an unchanged text keeps the selection valid.
+        revision: 0,
+      };
+    },
+    commitDraft: (text, selection) => {
+      applyPromptReplacementStable(0, promptRef.current.length, text, {
+        expandedCursorAfterReplace: selection.start,
+      });
+    },
+  });
   const sendDisabledReason =
     externalSendDisabledReason ??
+    (dictation.blocksSubmission ? "Finish dictation first." : null) ??
     (multipleModelSelections?.length === 0 ? "Select at least one model." : null) ??
     (activePendingProgress
       ? attachmentBlockReason
@@ -7093,7 +7118,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       isComposerApprovalState ||
                       projectSelectionRequired ||
                       isChoiceOnlyPendingQuestion ||
-                      activePendingIsResponding
+                      activePendingIsResponding ||
+                      dictation.blocksSubmission
                     }
                   />
                 </ComposerContextActionsContext>
@@ -7207,6 +7233,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         <TooltipPopup>Attach files</TooltipPopup>
                       </Tooltip>
                     </>
+                  ) : null}
+                  {dictation.available &&
+                  !isComposerApprovalState &&
+                  !isChoiceOnlyPendingQuestion ? (
+                    <ComposerDictationControl
+                      dictation={dictation}
+                      disabled={
+                        isConnecting || projectSelectionRequired || activePendingIsResponding
+                      }
+                    />
                   ) : null}
                   <ComposerFooterPrimaryActions
                     compact={isComposerResting || isComposerPrimaryActionsCompact}

@@ -30,6 +30,7 @@ import {
   rememberMicrophones,
 } from "../../lib/microphonePriority";
 import { getLocalVoiceTranscriber } from "../../native/voiceTranscription";
+import { getEnvironmentVoiceTranscriber } from "./environmentVoiceTranscriber";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { getNativeShowcaseScene } from "../showcase/nativeShowcaseScene";
 import {
@@ -153,7 +154,15 @@ function useVoiceInputRuntime() {
     recorderRef.current = recorder;
     sessionRef.current = new VoiceInputSession({
       recorder,
-      getTranscriber: getLocalVoiceTranscriber,
+      // A configured environment service wins so Android can dictate and iOS matches the
+      // service chosen in Settings; otherwise iOS keeps transcribing on the device.
+      getTranscriber: () => {
+        const environmentId = sessionRef.current?.environmentId ?? null;
+        return (
+          (environmentId ? getEnvironmentVoiceTranscriber(environmentId) : null) ??
+          getLocalVoiceTranscriber()
+        );
+      },
       requestPermission: async () => {
         const permission = await requestRecordingPermissionsAsync();
         return { granted: permission.granted, canAskAgain: permission.canAskAgain };

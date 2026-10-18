@@ -15,6 +15,7 @@ import {
   CalendarClockIcon,
   GitBranchIcon,
   HardDriveIcon,
+  MicIcon,
   PanelsTopLeftIcon,
   KeyboardIcon,
   Link2Icon,
@@ -86,6 +87,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/scheduled-tasks": CalendarClockIcon,
   "/settings/source-control": GitBranchIcon,
   "/settings/storage": HardDriveIcon,
+  "/settings/speech-to-text": MicIcon,
   "/settings/connections": Link2Icon,
   "/settings/archived": ArchiveIcon,
 };

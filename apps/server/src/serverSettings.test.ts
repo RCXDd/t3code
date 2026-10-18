@@ -1616,6 +1616,44 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       }).pipe(Effect.provide(layerServerSettingsWithSecrets())),
   );
 
+  it.effect("keeps speech-to-text API keys in the secret store", () =>
+    Effect.gen(function* () {
+      const service = yield* ServerSettingsModule.ServerSettingsService;
+      const config = yield* ServerConfig.ServerConfig;
+      const fs = yield* FileSystem.FileSystem;
+      const store = yield* ServerSecretStore.ServerSecretStore;
+      const saved = yield* service.updateSettings({
+        speechToText: {
+          provider: "groq",
+          language: "de",
+          providers: { groq: { apiKey: "groq-secret", model: "whisper-large-v3" } },
+        },
+      });
+      assert.strictEqual(saved.speechToText.providers.groq?.apiKey, "groq-secret");
+      const client = ServerSettingsModule.redactServerSettingsForClient(saved);
+      assert.strictEqual(client.speechToText.providers.groq?.apiKey, "••••••");
+      assert.strictEqual(client.speechToText.providers.groq?.model, "whisper-large-v3");
+      assert.notInclude(yield* fs.readFileString(config.settingsPath), "groq-secret");
+      const secretName = "speech-to-text-Z3JvcQ-YXBpS2V5";
+      assert.isTrue(Option.isSome(yield* store.get(secretName)));
+
+      // Echoing the marker back while editing another field keeps the stored key.
+      const edited = yield* service.updateSettings({
+        speechToText: {
+          providers: { groq: { apiKey: "••••••", model: "whisper-large-v3-turbo" } },
+        },
+      });
+      assert.strictEqual(edited.speechToText.providers.groq?.apiKey, "groq-secret");
+      assert.strictEqual(edited.speechToText.providers.groq?.model, "whisper-large-v3-turbo");
+
+      const cleared = yield* service.updateSettings({
+        speechToText: { providers: { groq: { apiKey: "" } } },
+      });
+      assert.strictEqual(cleared.speechToText.providers.groq?.apiKey, "");
+      assert.isTrue(Option.isNone(yield* store.get(secretName)));
+    }).pipe(Effect.provide(layerServerSettingsWithSecrets())),
+  );
+
   it.effect("moves saved provider credentials to the secret store when settings load", () =>
     Effect.gen(function* () {
       const service = yield* ServerSettingsModule.ServerSettingsService;
