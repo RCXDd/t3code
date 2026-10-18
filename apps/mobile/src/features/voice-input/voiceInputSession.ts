@@ -4,13 +4,15 @@ import {
   type VoiceDraftSnapshot,
   type VoiceInputControllerDependencies,
 } from "@t3tools/client-runtime/voice-input";
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 
 export type VoiceInputTarget = {
   readonly ownerKey: string;
   readonly label?: string;
   /** The environment whose speech-to-text service may transcribe this draft. */
   readonly environmentId?: EnvironmentId | null;
+  /** Gives dictation cleanup the thread's recent messages for spelling. */
+  readonly threadId?: ThreadId | null;
   readonly readDraft: () => VoiceDraftSnapshot | null;
   readonly commitDraft: VoiceInputControllerDependencies["commitDraft"];
   readonly subscribe: () => () => void;
@@ -75,6 +77,10 @@ export class VoiceInputSession {
 
   get environmentId(): EnvironmentId | null {
     return this.target?.environmentId ?? null;
+  }
+
+  get threadId(): ThreadId | null {
+    return this.target?.threadId ?? null;
   }
 
   cancel(ownerKey: string | null): void {

@@ -88,6 +88,22 @@ export interface ReviewGuideGenerationInput {
   modelSelection: ModelSelection;
 }
 
+export interface DictationCleanupInput {
+  cwd: string;
+  transcript: string;
+  /** ISO-639-1 code of the dictated language, empty when unknown. */
+  language: string;
+  vocabulary: string;
+  instructions: string;
+  /** Recent messages of the thread being dictated into, oldest first. */
+  conversation: ReadonlyArray<{ readonly role: "user" | "assistant"; readonly text: string }>;
+  modelSelection: ModelSelection;
+}
+
+export interface DictationCleanupResult {
+  text: string;
+}
+
 export type ReviewGuideGenerationResult = Omit<
   PullRequestReviewGuide,
   "headSha" | "generatedAt" | "modelSelection"
@@ -113,4 +129,9 @@ export interface ProviderTextGeneration {
   readonly generateReviewGuide: (
     input: ReviewGuideGenerationInput,
   ) => Effect.Effect<ReviewGuideGenerationResult, TextGenerationError>;
+
+  /** Absent for providers that cannot run a plain prompt. */
+  readonly cleanDictation?: (
+    input: DictationCleanupInput,
+  ) => Effect.Effect<DictationCleanupResult, TextGenerationError>;
 }

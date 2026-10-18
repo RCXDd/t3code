@@ -1,4 +1,4 @@
-import { ProviderDriverKind } from "@t3tools/contracts";
+import { ProviderDriverKind, TextGenerationError } from "@t3tools/contracts";
 import { OpenCodeSettings } from "../settings.ts";
 import * as Crypto from "effect/Crypto";
 import * as Deferred from "effect/Deferred";
@@ -128,6 +128,13 @@ function selectOpenCodeRuntimeAdapter(input: {
   };
 }
 
+const unsupportedCleanup = Effect.fail(
+  new TextGenerationError({
+    operation: "cleanDictation",
+    detail: "This OpenCode runtime cannot clean up dictation.",
+  }),
+);
+
 function selectOpenCodeRuntimeTextGeneration(
   probe: OpenCodeRuntimeProbe,
   v1: ProviderTextGeneration,
@@ -158,6 +165,11 @@ function selectOpenCodeRuntimeTextGeneration(
       byOpenCodeRuntime(probe.get, {
         v1: v1.generateReviewGuide(input),
         v2: v2.generateReviewGuide(input),
+      }),
+    cleanDictation: (input) =>
+      byOpenCodeRuntime(probe.get, {
+        v1: v1.cleanDictation?.(input) ?? unsupportedCleanup,
+        v2: v2.cleanDictation?.(input) ?? unsupportedCleanup,
       }),
   };
 }

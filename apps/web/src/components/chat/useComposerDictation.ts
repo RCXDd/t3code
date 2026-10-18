@@ -9,7 +9,12 @@ import {
   type VoiceDraftSnapshot,
   type VoiceInputState,
 } from "@t3tools/client-runtime/voice-input";
-import { AuthOrchestrationOperateScope, type EnvironmentId } from "@t3tools/contracts";
+import {
+  AuthOrchestrationOperateScope,
+  AuthOrchestrationReadScope,
+  type EnvironmentId,
+  type ThreadId,
+} from "@t3tools/contracts";
 import { useEffect, useRef, useState } from "react";
 
 import { useStableCallback } from "../../hooks/useStableCallback";
@@ -21,7 +26,11 @@ import {
 } from "../../lib/webVoiceRecorder";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { serverEnvironment } from "../../state/server";
-import { readPreparedConnection, useEnvironmentScope } from "../../state/session";
+import {
+  readEnvironmentScope,
+  readPreparedConnection,
+  useEnvironmentScope,
+} from "../../state/session";
 import { toastManager } from "../ui/toast";
 
 const IDLE_STATE: VoiceInputState = { phase: "idle", error: null, errorAction: null };
@@ -44,6 +53,7 @@ function failureMessage(error: unknown, fallback: string): string {
 
 function createDictationSession(input: {
   readonly readEnvironmentId: () => EnvironmentId;
+  readonly readThreadId: () => ThreadId | null;
   readonly readLanguage: () => string;
   readonly readDraft: () => VoiceDraftSnapshot | null;
   readonly commitDraft: (text: string, selection: DraftSelection) => void;
@@ -56,6 +66,7 @@ function createDictationSession(input: {
     recorder,
     getTranscriber: () => {
       const environmentId = input.readEnvironmentId();
+      const threadId = input.readThreadId();
       return createEnvironmentVoiceTranscriber({
         locale: input.readLanguage() || navigator.language,
         readRecording: async (uri) => {
@@ -67,7 +78,16 @@ function createDictationSession(input: {
           const result = await runAtomCommand(
             appAtomRegistry,
             serverEnvironment.createSpeechToTextUploadUrl,
-            { environmentId, input: uploadInput },
+            {
+              environmentId,
+              input: {
+                ...uploadInput,
+                // Naming a thread needs read access; without it cleanup runs without context.
+                ...(threadId && readEnvironmentScope(environmentId, AuthOrchestrationReadScope)
+                  ? { threadId }
+                  : {}),
+              },
+            },
             { reportFailure: false },
           );
           if (result._tag !== "Success") {
@@ -82,6 +102,12 @@ function createDictationSession(input: {
           if (!url) throw new Error("This environment is not connected.");
           return url;
         },
+        onCleanupError: (message) =>
+          toastManager.add({
+            type: "warning",
+            title: "Inserted the transcript without cleanup",
+            description: message,
+          }),
         upload: async ({ url, uri, mimeType, signal }) => {
           const blob = readWebVoiceRecording(uri);
           if (!blob) throw new Error("The recording is no longer available.");
@@ -113,6 +139,8 @@ function createDictationSession(input: {
 
 export function useComposerDictation(input: {
   readonly environmentId: EnvironmentId;
+  /** Lets cleanup spell names the way the thread does. */
+  readonly threadId: ThreadId | null;
   readonly ownerKey: string;
   readonly readDraft: () => VoiceDraftSnapshot | null;
   readonly commitDraft: (text: string, selection: DraftSelection) => void;
@@ -126,6 +154,7 @@ export function useComposerDictation(input: {
 
   // The session outlives renders and reads the latest props through these forwarders.
   const readEnvironmentId = useStableCallback(() => input.environmentId);
+  const readThreadId = useStableCallback(() => input.threadId);
   const readLanguage = useStableCallback(() => language);
   const readDraft = useStableCallback(() => input.readDraft());
   const commitDraft = useStableCallback((text: string, selection: DraftSelection) =>
@@ -134,6 +163,7 @@ export function useComposerDictation(input: {
   const [{ controller, recorder }] = useState(() =>
     createDictationSession({
       readEnvironmentId,
+      readThreadId,
       readLanguage,
       readDraft,
       commitDraft,

@@ -466,6 +466,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     ownerKey: composerDraftKey,
     label: props.selectedThread.title || "Untitled thread",
     environmentId: props.environmentId,
+    threadId: props.selectedThread.id,
     readDraftMessage: () => getComposerDraftSnapshot(composerDraftKey).text,
     subscribeToDraftChanges: (onChange) => appAtomRegistry.subscribe(composerDraftsAtom, onChange),
     selection: composerMenu.selection,

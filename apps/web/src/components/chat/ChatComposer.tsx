@@ -2321,6 +2321,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   }`;
   const dictation = useComposerDictation({
     environmentId,
+    threadId: activeThread?.id ?? null,
     ownerKey: dictationOwnerKey,
     readDraft: () => {
       const text = promptRef.current;

@@ -1,12 +1,15 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import { HttpClient, HttpClientResponse, HttpRouter } from "effect/http";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import {
   issueSpeechToTextUploadUrl,
   layerSpeechToTextRoute,
@@ -66,7 +69,7 @@ describe("SpeechToTextRoute transcription", () => {
       );
       const issued = yield* issueSpeechToTextUploadUrl({ mimeType: "audio/webm", sizeBytes: 4 });
       const context = yield* Effect.context<
-        ServerSecretStore.ServerSecretStore | ServerSettingsService
+        ServerSecretStore.ServerSecretStore | ServerSettingsService | FileSystem.FileSystem
       >();
       const { handler, dispose } = HttpRouter.toWebHandler(
         layerSpeechToTextRoute.pipe(
@@ -99,5 +102,149 @@ describe("SpeechToTextRoute transcription", () => {
       expect(mismatched.status).toBe(400);
       expect(forwarded).toHaveLength(1);
     }).pipe(Effect.scoped, Effect.provide(configured)),
+  );
+});
+
+describe("SpeechToTextRoute cleanup", () => {
+  it.effect("inserts the raw transcript and reports why cleanup failed", () =>
+    Effect.gen(function* () {
+      const provider = HttpClient.make((request) =>
+        Effect.succeed(HttpClientResponse.fromWeb(request, Response.json({ text: "äh hallo" }))),
+      );
+      const issued = yield* issueSpeechToTextUploadUrl({ mimeType: "audio/webm", sizeBytes: 1 });
+      const context = yield* Effect.context<
+        ServerSecretStore.ServerSecretStore | ServerSettingsService | FileSystem.FileSystem
+      >();
+      const { handler, dispose } = HttpRouter.toWebHandler(
+        layerSpeechToTextRoute.pipe(
+          Layer.provideMerge(Layer.succeedContext(context)),
+          Layer.provideMerge(Layer.succeed(HttpClient.HttpClient, provider)),
+        ),
+        { disableLogger: true },
+      );
+      yield* Effect.addFinalizer(() => Effect.promise(dispose));
+      const response = yield* Effect.promise(() =>
+        handler(
+          new Request(`http://t3.test${issued.relativeUrl}`, {
+            method: "POST",
+            body: new Uint8Array([1]),
+          }),
+        ),
+      );
+      expect(response.status).toBe(200);
+      expect(yield* Effect.promise(() => response.json())).toEqual({
+        text: "äh hallo",
+        cleanupError: "Add the cleanup server URL and model in Settings → Speech to text.",
+      });
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerWith({
+          speechToText: {
+            provider: "groq",
+            providers: { groq: { apiKey: "gsk" } },
+            cleanup: { mode: "openai-compatible" },
+          },
+        }),
+      ),
+    ),
+  );
+  it.effect("still answers when the temporary directory cannot be removed", () =>
+    Effect.gen(function* () {
+      const provider = HttpClient.make((request) =>
+        Effect.succeed(HttpClientResponse.fromWeb(request, Response.json({ text: "hallo" }))),
+      );
+      const issued = yield* issueSpeechToTextUploadUrl({ mimeType: "audio/webm", sizeBytes: 1 });
+      const context = yield* Effect.context<
+        ServerSecretStore.ServerSecretStore | ServerSettingsService | FileSystem.FileSystem
+      >();
+      const fileSystem = Context.get(context, FileSystem.FileSystem);
+      const { handler, dispose } = HttpRouter.toWebHandler(
+        layerSpeechToTextRoute.pipe(
+          Layer.provideMerge(
+            Layer.succeedContext(
+              Context.add(context, FileSystem.FileSystem, {
+                ...fileSystem,
+                remove: () => Effect.die(new Error("EBUSY")),
+              }),
+            ),
+          ),
+          Layer.provideMerge(Layer.succeed(HttpClient.HttpClient, provider)),
+        ),
+        { disableLogger: true },
+      );
+      yield* Effect.addFinalizer(() => Effect.promise(dispose));
+      const response = yield* Effect.promise(() =>
+        handler(
+          new Request(`http://t3.test${issued.relativeUrl}`, {
+            method: "POST",
+            body: new Uint8Array([1]),
+          }),
+        ),
+      );
+      expect(response.status).toBe(200);
+      expect(yield* Effect.promise(() => response.json())).toMatchObject({ text: "hallo" });
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerWith({
+          speechToText: {
+            provider: "groq",
+            providers: { groq: { apiKey: "gsk" } },
+            cleanup: { mode: "openai-compatible" },
+          },
+        }),
+      ),
+    ),
+  );
+  it.effect("inserts the transcript when the text generation model dies", () =>
+    Effect.gen(function* () {
+      const provider = HttpClient.make((request) =>
+        Effect.succeed(HttpClientResponse.fromWeb(request, Response.json({ text: "hallo" }))),
+      );
+      const issued = yield* issueSpeechToTextUploadUrl({ mimeType: "audio/webm", sizeBytes: 1 });
+      const context = yield* Effect.context<
+        ServerSecretStore.ServerSecretStore | ServerSettingsService | FileSystem.FileSystem
+      >();
+      const textGeneration = {
+        cleanDictation: () => Effect.die(new Error("EBUSY: temp directory")),
+      } as unknown as TextGeneration.TextGeneration["Service"];
+      const { handler, dispose } = HttpRouter.toWebHandler(
+        layerSpeechToTextRoute.pipe(
+          Layer.provideMerge(
+            Layer.succeedContext(
+              Context.add(context, TextGeneration.TextGeneration, textGeneration),
+            ),
+          ),
+          Layer.provideMerge(Layer.succeed(HttpClient.HttpClient, provider)),
+        ),
+        { disableLogger: true },
+      );
+      yield* Effect.addFinalizer(() => Effect.promise(dispose));
+      const response = yield* Effect.promise(() =>
+        handler(
+          new Request(`http://t3.test${issued.relativeUrl}`, {
+            method: "POST",
+            body: new Uint8Array([1]),
+          }),
+        ),
+      );
+      expect(response.status).toBe(200);
+      expect(yield* Effect.promise(() => response.json())).toEqual({
+        text: "hallo",
+        cleanupError: "Cleanup failed unexpectedly, so the transcript was inserted as transcribed.",
+      });
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerWith({
+          speechToText: {
+            provider: "groq",
+            providers: { groq: { apiKey: "gsk" } },
+            cleanup: { mode: "text-generation" },
+          },
+        }),
+      ),
+    ),
   );
 });

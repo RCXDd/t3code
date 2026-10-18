@@ -7,7 +7,11 @@ import {
 
 import { useAtomValue } from "@effect/atom-react";
 import { environmentSpeechToTextAvailable } from "@t3tools/client-runtime/voice-input";
-import { AuthOrchestrationOperateScope, type EnvironmentId } from "@t3tools/contracts";
+import {
+  AuthOrchestrationOperateScope,
+  type EnvironmentId,
+  type ThreadId,
+} from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
 import type { ComposerEditorSelection } from "../../components/ComposerEditor";
@@ -24,6 +28,7 @@ export function useVoiceInputController(input: {
   readonly label: string;
   /** Lets the environment's speech-to-text service transcribe this draft when one is set up. */
   readonly environmentId: EnvironmentId | null;
+  readonly threadId?: ThreadId | null;
   readonly readDraftMessage: () => string | null;
   readonly subscribeToDraftChanges: (onChange: () => void) => () => void;
   readonly selection: ComposerEditorSelection;
@@ -77,6 +82,7 @@ export function useVoiceInputController(input: {
       ),
       label: captured.label,
       environmentId: captured.environmentId,
+      threadId: captured.threadId ?? null,
     });
   }, [session]);
   const state = global.ownerKey === input.ownerKey ? global.state : IDLE_STATE;

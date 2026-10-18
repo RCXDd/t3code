@@ -5,7 +5,12 @@ import {
   environmentSpeechToTextAvailable,
   type VoiceTranscriber,
 } from "@t3tools/client-runtime/voice-input";
-import { AuthOrchestrationOperateScope, type EnvironmentId } from "@t3tools/contracts";
+import {
+  AuthOrchestrationOperateScope,
+  AuthOrchestrationReadScope,
+  type EnvironmentId,
+  type ThreadId,
+} from "@t3tools/contracts";
 import * as Option from "effect/Option";
 
 import { appAtomRegistry } from "../../state/atom-registry";
@@ -27,6 +32,8 @@ export function environmentVoiceTranscriptionAvailable(environmentId: Environmen
 /** Sends recordings to the environment when it has a speech-to-text service set up. */
 export function getEnvironmentVoiceTranscriber(
   environmentId: EnvironmentId,
+  threadId: ThreadId | null,
+  onCleanupError: (message: string) => void,
 ): VoiceTranscriber | null {
   if (!environmentVoiceTranscriptionAvailable(environmentId)) return null;
   const config = appAtomRegistry.get(serverEnvironment.configValueAtom(environmentId));
@@ -41,7 +48,16 @@ export function getEnvironmentVoiceTranscriber(
       const result = await runAtomCommand(
         appAtomRegistry,
         serverEnvironment.createSpeechToTextUploadUrl,
-        { environmentId, input },
+        {
+          environmentId,
+          input: {
+            ...input,
+            // Naming a thread needs read access; without it cleanup runs without context.
+            ...(threadId && readEnvironmentScope(environmentId, AuthOrchestrationReadScope)
+              ? { threadId }
+              : {}),
+          },
+        },
         { reportFailure: false },
       );
       if (result._tag !== "Success") {
@@ -62,6 +78,7 @@ export function getEnvironmentVoiceTranscriber(
       if (!url) throw new Error("This environment is not connected.");
       return url;
     },
+    onCleanupError,
     upload: async ({ url, uri, mimeType, signal }) => {
       const { File, UploadType } = await import("expo-file-system");
       const result = await new File(uri).upload(url, {
