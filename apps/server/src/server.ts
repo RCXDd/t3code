@@ -32,6 +32,7 @@ import {
   guardHttpResponseWriteErrors,
   rejectRequestsUntilServing,
 } from "./httpResponseErrorGuard.ts";
+import { layerSpeechToTextRoute } from "./speechToText/SpeechToTextRoute.ts";
 import { fixPath } from "./os-jank.ts";
 import * as Ws from "./ws.ts";
 import * as AgentScopeLive from "./process/agentScope.ts";
@@ -716,6 +717,7 @@ const layerMakeRoutes = Layer.mergeAll(
     ServerHttp.layerAssetRoute,
     ServerHttp.layerAttachmentUploadRoute,
     GuestHttp.layer,
+    layerSpeechToTextRoute,
     DeviceHubProxy.layer,
     ServerBrowserStream.routeLayer,
     ServerHttp.layerStaticAndDevRoute,

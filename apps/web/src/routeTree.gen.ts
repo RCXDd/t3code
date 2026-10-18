@@ -19,6 +19,7 @@ import { Route as ConnectRouteImport } from './routes/connect'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as SettingsStorageRouteImport } from './routes/settings.storage'
+import { Route as SettingsSpeechToTextRouteImport } from './routes/settings.speech-to-text'
 import { Route as SettingsSourceControlRouteImport } from './routes/settings.source-control'
 import { Route as SettingsSnapShotRouteImport } from './routes/settings.snap-shot'
 import { Route as SettingsScheduledTasksRouteImport } from './routes/settings.scheduled-tasks'
@@ -86,6 +87,11 @@ const ChatIndexRoute = ChatIndexRouteImport.update({
 const SettingsStorageRoute = SettingsStorageRouteImport.update({
   id: '/storage',
   path: '/storage',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsSpeechToTextRoute = SettingsSpeechToTextRouteImport.update({
+  id: '/speech-to-text',
+  path: '/speech-to-text',
   getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsSourceControlRoute = SettingsSourceControlRouteImport.update({
@@ -212,6 +218,7 @@ export interface FileRoutesByFullPath {
   '/settings/scheduled-tasks': typeof SettingsScheduledTasksRoute
   '/settings/snap-shot': typeof SettingsSnapShotRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
+  '/settings/speech-to-text': typeof SettingsSpeechToTextRoute
   '/settings/storage': typeof SettingsStorageRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
@@ -241,6 +248,7 @@ export interface FileRoutesByTo {
   '/settings/scheduled-tasks': typeof SettingsScheduledTasksRoute
   '/settings/snap-shot': typeof SettingsSnapShotRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
+  '/settings/speech-to-text': typeof SettingsSpeechToTextRoute
   '/settings/storage': typeof SettingsStorageRoute
   '/': typeof ChatIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
@@ -273,6 +281,7 @@ export interface FileRoutesById {
   '/settings/scheduled-tasks': typeof SettingsScheduledTasksRoute
   '/settings/snap-shot': typeof SettingsSnapShotRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
+  '/settings/speech-to-text': typeof SettingsSpeechToTextRoute
   '/settings/storage': typeof SettingsStorageRoute
   '/_chat/': typeof ChatIndexRoute
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
@@ -306,6 +315,7 @@ export interface FileRouteTypes {
     | '/settings/scheduled-tasks'
     | '/settings/snap-shot'
     | '/settings/source-control'
+    | '/settings/speech-to-text'
     | '/settings/storage'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
@@ -335,6 +345,7 @@ export interface FileRouteTypes {
     | '/settings/scheduled-tasks'
     | '/settings/snap-shot'
     | '/settings/source-control'
+    | '/settings/speech-to-text'
     | '/settings/storage'
     | '/'
     | '/$environmentId/$threadId'
@@ -366,6 +377,7 @@ export interface FileRouteTypes {
     | '/settings/scheduled-tasks'
     | '/settings/snap-shot'
     | '/settings/source-control'
+    | '/settings/speech-to-text'
     | '/settings/storage'
     | '/_chat/'
     | '/_chat/$environmentId/$threadId'
@@ -454,6 +466,13 @@ declare module '@tanstack/react-router' {
       path: '/storage'
       fullPath: '/settings/storage'
       preLoaderRoute: typeof SettingsStorageRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/speech-to-text': {
+      id: '/settings/speech-to-text'
+      path: '/speech-to-text'
+      fullPath: '/settings/speech-to-text'
+      preLoaderRoute: typeof SettingsSpeechToTextRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/source-control': {
@@ -625,6 +644,7 @@ interface SettingsRouteChildren {
   SettingsScheduledTasksRoute: typeof SettingsScheduledTasksRoute
   SettingsSnapShotRoute: typeof SettingsSnapShotRoute
   SettingsSourceControlRoute: typeof SettingsSourceControlRoute
+  SettingsSpeechToTextRoute: typeof SettingsSpeechToTextRoute
   SettingsStorageRoute: typeof SettingsStorageRoute
 }
 
@@ -643,6 +663,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsScheduledTasksRoute: SettingsScheduledTasksRoute,
   SettingsSnapShotRoute: SettingsSnapShotRoute,
   SettingsSourceControlRoute: SettingsSourceControlRoute,
+  SettingsSpeechToTextRoute: SettingsSpeechToTextRoute,
   SettingsStorageRoute: SettingsStorageRoute,
 }
 

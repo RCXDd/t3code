@@ -173,17 +173,48 @@ Stashes containing uploaded files must be restored in their original environment
 Those files are retained for 24 hours. After an upload expires, restore the prompt
 and use **Attach again** or remove the missing file before sending.
 
-## Voice input on iPhone
+## Voice input
 
-On supported iPhones with iOS 26 or later, use the composer's microphone to record,
-then confirm to transcribe. Text is inserted where your selection was when
-recording started, ready for you to review and edit before sending.
+Use the composer's microphone to dictate, then confirm to transcribe. Text is inserted where your
+selection was when recording started, ready for you to review and edit before sending. Recordings
+can be up to five minutes long. Canceling, leaving the draft, or an audio interruption discards the
+recording and preserves your existing draft.
 
-The first use may download Apple's speech model and needs a network connection.
-Later transcription works offline for that language. Recordings can be up to five
-minutes long. Canceling, leaving the screen, or an audio interruption discards the
-recording and preserves your existing draft. While recording, the screen stays
-awake; it can sleep normally once recording stops.
+### Set up a transcription service
+
+Choose a service in **Settings → Speech to text**. The setting belongs to the environment, so every
+web, desktop, and mobile client connected to it can dictate. API keys stay in that environment's
+secret store. Recordings go from the environment to the service you choose and are deleted after
+transcription; only the message text is sent when you submit.
+
+- **OpenAI** (`gpt-4o-mini-transcribe`, `gpt-4o-transcribe`, `whisper-1`), **Groq**, **Mistral**,
+  **xAI**, **ElevenLabs Scribe**, and **DeepInfra** need an API key from that service.
+- **Custom (OpenAI-compatible)** sends recordings to any server with an `/audio/transcriptions`
+  endpoint, such as a self-hosted Whisper or Parakeet server. A key is optional.
+- **Language** forces a language such as `de`. Leaving it empty detects the language, which can
+  misread short clips.
+- **Vocabulary** lists names and terms the service should spell correctly, for services that
+  accept a prompt.
+
+To transcribe on the same machine without an API key, run an OpenAI-compatible
+[Parakeet](https://github.com/achetronic/parakeet) server next to T3 Code. It covers 25 European
+languages and runs on a CPU:
+
+```bash
+docker run -d --name parakeet --restart unless-stopped \
+  -p 127.0.0.1:5092:5092 ghcr.io/achetronic/parakeet:0.8.0-int8
+```
+
+Then choose **Custom (OpenAI-compatible)**, set the server URL to `http://127.0.0.1:5092/v1`, and the
+model to `parakeet-tdt-0.6b-v3`.
+
+### On iPhone
+
+Without a transcription service, supported iPhones with iOS 26 or later transcribe on the device.
+The first use may download Apple's speech model and needs a network connection. Later
+transcription works offline for that language. When the environment has a service set up, iPhone
+and Android use it instead. While recording, the screen stays awake; it can sleep normally once
+recording stops.
 
 Voice input records from the first connected microphone in **Settings → Microphone**.
 The list mixes kinds (built-in, other wired, other Bluetooth, CarPlay) with wired and
@@ -191,9 +222,6 @@ Bluetooth devices you have dictated with, listed by name. Drag to rank them toge
 for example, put **Other Bluetooth** above your AirPods so a new headset is preferred
 while the AirPods microphone stays low. By default, CarPlay comes after the built-in
 microphone.
-
-Transcription runs on your device. T3 Code deletes the temporary audio after
-transcription or cancellation; only the message text is sent when you submit.
 
 ## Queued messages
 
