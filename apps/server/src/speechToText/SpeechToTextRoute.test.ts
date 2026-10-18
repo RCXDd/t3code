@@ -9,6 +9,7 @@ import { HttpClient, HttpClientResponse, HttpRouter } from "effect/http";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import {
   issueSpeechToTextUploadUrl,
   layerSpeechToTextRoute,
@@ -191,6 +192,56 @@ describe("SpeechToTextRoute cleanup", () => {
             provider: "groq",
             providers: { groq: { apiKey: "gsk" } },
             cleanup: { mode: "openai-compatible" },
+          },
+        }),
+      ),
+    ),
+  );
+  it.effect("inserts the transcript when the text generation model dies", () =>
+    Effect.gen(function* () {
+      const provider = HttpClient.make((request) =>
+        Effect.succeed(HttpClientResponse.fromWeb(request, Response.json({ text: "hallo" }))),
+      );
+      const issued = yield* issueSpeechToTextUploadUrl({ mimeType: "audio/webm", sizeBytes: 1 });
+      const context = yield* Effect.context<
+        ServerSecretStore.ServerSecretStore | ServerSettingsService | FileSystem.FileSystem
+      >();
+      const textGeneration = {
+        cleanDictation: () => Effect.die(new Error("EBUSY: temp directory")),
+      } as unknown as TextGeneration.TextGeneration["Service"];
+      const { handler, dispose } = HttpRouter.toWebHandler(
+        layerSpeechToTextRoute.pipe(
+          Layer.provideMerge(
+            Layer.succeedContext(
+              Context.add(context, TextGeneration.TextGeneration, textGeneration),
+            ),
+          ),
+          Layer.provideMerge(Layer.succeed(HttpClient.HttpClient, provider)),
+        ),
+        { disableLogger: true },
+      );
+      yield* Effect.addFinalizer(() => Effect.promise(dispose));
+      const response = yield* Effect.promise(() =>
+        handler(
+          new Request(`http://t3.test${issued.relativeUrl}`, {
+            method: "POST",
+            body: new Uint8Array([1]),
+          }),
+        ),
+      );
+      expect(response.status).toBe(200);
+      expect(yield* Effect.promise(() => response.json())).toEqual({
+        text: "hallo",
+        cleanupError: "Cleanup failed unexpectedly, so the transcript was inserted as transcribed.",
+      });
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerWith({
+          speechToText: {
+            provider: "groq",
+            providers: { groq: { apiKey: "gsk" } },
+            cleanup: { mode: "text-generation" },
           },
         }),
       ),
