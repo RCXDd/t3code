@@ -229,13 +229,13 @@ export const transcribeSpeech = Effect.fn("SpeechToText.transcribe")(function* (
       ),
     );
 
-  const transcript = parseSpeechToTextResponse(request.provider, response.status, response.body);
-  if (transcript instanceof SpeechToTextFailure) {
-    const apiKey = resolveSpeechToTextProviderSettings(settings, request.provider).apiKey;
-    return yield* new SpeechToTextFailure({
-      status: transcript.status,
-      message: redactSpeechToTextSecret(transcript.message, apiKey),
-    });
-  }
+  // Masked before parsing, which truncates details and could cut a key in half.
+  const apiKey = resolveSpeechToTextProviderSettings(settings, request.provider).apiKey;
+  const transcript = parseSpeechToTextResponse(
+    request.provider,
+    response.status,
+    redactSpeechToTextSecret(response.body, apiKey),
+  );
+  if (transcript instanceof SpeechToTextFailure) return yield* transcript;
   return transcript;
 });

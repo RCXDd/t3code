@@ -47,7 +47,7 @@ export const SPEECH_TO_TEXT_PROVIDERS: Readonly<
   groq: {
     label: "Groq",
     defaultModel: "whisper-large-v3-turbo",
-    suggestedModels: ["whisper-large-v3-turbo", "whisper-large-v3", "distil-whisper-large-v3-en"],
+    suggestedModels: ["whisper-large-v3-turbo", "whisper-large-v3"],
     defaultBaseUrl: "https://api.groq.com/openai/v1",
     apiKeyRequired: true,
     apiKeyUrl: "https://console.groq.com/keys",

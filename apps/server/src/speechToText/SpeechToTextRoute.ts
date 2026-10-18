@@ -9,7 +9,7 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
+import { HttpMiddleware, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import * as HttpIncomingMessage from "effect/http/HttpIncomingMessage";
 
 import {
@@ -101,50 +101,53 @@ const jsonResponse = (status: number, body: Record<string, string>) =>
 export const layerSpeechToTextRoute = HttpRouter.add(
   "POST",
   `${SPEECH_TO_TEXT_ROUTE_PREFIX}/*`,
-  Effect.gen(function* () {
-    const request = yield* HttpServerRequest.HttpServerRequest;
-    const url = HttpServerRequest.toURL(request);
-    if (Option.isNone(url)) return jsonResponse(400, { error: "Bad request." });
+  // The token in the path is the credential, so this request never reaches the access log.
+  HttpMiddleware.withLoggerDisabled(
+    Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const url = HttpServerRequest.toURL(request);
+      if (Option.isNone(url)) return jsonResponse(400, { error: "Bad request." });
 
-    const token = url.value.pathname.slice(`${SPEECH_TO_TEXT_ROUTE_PREFIX}/`.length);
-    const claims = token ? yield* validateSpeechToTextUploadToken(token) : null;
-    if (!claims) {
-      return jsonResponse(404, { error: "This upload link expired. Record again." });
-    }
-    const contentLength = request.headers["content-length"];
-    if (contentLength !== undefined && Number(contentLength) !== claims.sizeBytes) {
-      return jsonResponse(400, { error: "Content-Length must match the upload size." });
-    }
-    // Chunked requests carry no content-length, so the reader itself is capped.
-    const body = yield* request.arrayBuffer.pipe(
-      Effect.map((buffer) => new Uint8Array(buffer)),
-      Effect.provideService(HttpIncomingMessage.MaxBodySize, ByteSize.bytes(claims.sizeBytes)),
-      Effect.option,
-    );
-    if (Option.isNone(body) || body.value.byteLength !== claims.sizeBytes) {
-      return jsonResponse(400, { error: "The recording did not match its declared size." });
-    }
+      const token = url.value.pathname.slice(`${SPEECH_TO_TEXT_ROUTE_PREFIX}/`.length);
+      const claims = token ? yield* validateSpeechToTextUploadToken(token) : null;
+      if (!claims) {
+        return jsonResponse(404, { error: "This upload link expired. Record again." });
+      }
+      const contentLength = request.headers["content-length"];
+      if (contentLength !== undefined && Number(contentLength) !== claims.sizeBytes) {
+        return jsonResponse(400, { error: "Content-Length must match the upload size." });
+      }
+      // Chunked requests carry no content-length, so the reader itself is capped.
+      const body = yield* request.arrayBuffer.pipe(
+        Effect.map((buffer) => new Uint8Array(buffer)),
+        Effect.provideService(HttpIncomingMessage.MaxBodySize, ByteSize.bytes(claims.sizeBytes)),
+        Effect.option,
+      );
+      if (Option.isNone(body) || body.value.byteLength !== claims.sizeBytes) {
+        return jsonResponse(400, { error: "The recording did not match its declared size." });
+      }
 
-    const settingsService = yield* ServerSettingsService;
-    const settings = yield* settingsService.getSettings.pipe(Effect.option);
-    if (Option.isNone(settings)) {
-      return jsonResponse(500, { error: "Could not read the speech-to-text settings." });
-    }
-    return yield* transcribeSpeech(settings.value.speechToText, {
-      bytes: body.value,
-      mimeType: claims.mimeType,
-    }).pipe(
-      Effect.map((text) => jsonResponse(200, { text })),
-      Effect.catchTags({
-        SpeechToTextFailure: (failure: SpeechToTextFailure) =>
-          Effect.as(
-            Effect.logWarning("Speech-to-text transcription failed.", {
-              status: failure.status,
-              message: failure.message,
-            }),
-            jsonResponse(failure.status, { error: failure.message }),
-          ),
-      }),
-    );
-  }),
+      const settingsService = yield* ServerSettingsService;
+      const settings = yield* settingsService.getSettings.pipe(Effect.option);
+      if (Option.isNone(settings)) {
+        return jsonResponse(500, { error: "Could not read the speech-to-text settings." });
+      }
+      return yield* transcribeSpeech(settings.value.speechToText, {
+        bytes: body.value,
+        mimeType: claims.mimeType,
+      }).pipe(
+        Effect.map((text) => jsonResponse(200, { text })),
+        Effect.catchTags({
+          SpeechToTextFailure: (failure: SpeechToTextFailure) =>
+            Effect.as(
+              Effect.logWarning("Speech-to-text transcription failed.", {
+                status: failure.status,
+                message: failure.message,
+              }),
+              jsonResponse(failure.status, { error: failure.message }),
+            ),
+        }),
+      );
+    }),
+  ),
 );
