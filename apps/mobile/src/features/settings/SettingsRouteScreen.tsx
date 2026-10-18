@@ -207,6 +207,12 @@ function SettingsIndexSections() {
           disabled={noServerTargets}
         />
         <SettingsRow
+          icon="mic"
+          label="Speech to text"
+          target="SettingsSpeechToText"
+          disabled={noServerTargets}
+        />
+        <SettingsRow
           icon="arrow.clockwise"
           label="Maintenance"
           target="SettingsEnvironmentMaintenance"
