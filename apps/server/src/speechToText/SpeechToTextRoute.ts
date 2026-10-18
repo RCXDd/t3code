@@ -22,7 +22,6 @@ import {
 } from "../auth/utils.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
-import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
@@ -111,6 +110,11 @@ const jsonResponse = (status: number, body: Record<string, string>) =>
     headers: { "cache-control": "private, no-store" },
   });
 
+// Enough rows for the last few exchanges; the full transcript of a long thread is far costlier.
+const CONTEXT_ROW_LIMIT = 40;
+const CONTEXT_USER_TURN_LIMIT = 3;
+const CONTEXT_TIMEOUT = "5 seconds";
+
 const readDictationConversation = Effect.fn("SpeechToText.readDictationConversation")(function* (
   threadId: ThreadId | null,
 ) {
@@ -118,14 +122,18 @@ const readDictationConversation = Effect.fn("SpeechToText.readDictationConversat
   const threadManagement = yield* Effect.serviceOption(
     ThreadManagementService.ThreadManagementService,
   );
-  const identity = yield* Effect.serviceOption(ServerEnvironment.ServerEnvironmentIdentity);
-  if (Option.isNone(threadManagement) || Option.isNone(identity)) return [];
-  return yield* threadManagement.value.getThreadTranscript(threadId).pipe(
-    Effect.provideService(ServerEnvironment.ServerEnvironmentIdentity, identity.value),
-    Effect.map(recentDictationConversation),
-    // Context only improves spelling; a missing or oversized thread must not fail dictation.
-    Effect.orElseSucceed(() => []),
-  );
+  if (Option.isNone(threadManagement)) return [];
+  return yield* threadManagement.value
+    .getThreadSnapshotWindow(threadId, {
+      rowLimit: CONTEXT_ROW_LIMIT,
+      userTurnLimit: CONTEXT_USER_TURN_LIMIT,
+    })
+    .pipe(
+      Effect.map((snapshot) => recentDictationConversation(snapshot.projection.turnItems)),
+      Effect.timeout(CONTEXT_TIMEOUT),
+      // Context only improves spelling; a missing or slow thread must not fail dictation.
+      Effect.orElseSucceed(() => []),
+    );
 });
 
 /** A failed cleanup still inserts the raw transcript, and reports why it was not cleaned. */

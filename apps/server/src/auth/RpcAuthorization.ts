@@ -9,6 +9,7 @@ import {
   ProviderInstanceMutation,
   requiredScopesForServerSettingsPatch,
   requiredScopesForProjectMutation,
+  SpeechToTextCreateUploadUrlInput,
   ProjectMutation,
   AuthSettingsWriteScope,
   AuthProvidersManageScope,
@@ -240,6 +241,7 @@ const requiredScopesForSettingsUpdate = (payload: unknown) => {
 };
 
 const decodeProjectMutation = Schema.decodeUnknownSync(ProjectMutation);
+const decodeSpeechToTextUploadUrlInput = Schema.decodeUnknownSync(SpeechToTextCreateUploadUrlInput);
 
 const requiredScopesForRpcCall = (
   method: string,
@@ -257,6 +259,13 @@ const requiredScopesForRpcCall = (
         ? AuthFilesystemReadScope
         : AuthOrchestrationReadScope,
     ];
+  }
+  if (method === WS_METHODS.speechToTextCreateUploadUrl) {
+    // Thread context sends that thread's messages to the cleanup model, which is a read.
+    const { threadId } = decodeSpeechToTextUploadUrlInput(payload);
+    return threadId === undefined
+      ? [AuthOrchestrationOperateScope]
+      : [AuthOrchestrationOperateScope, AuthOrchestrationReadScope];
   }
   if (method === WS_METHODS.serverUpdateSettings) return requiredScopesForSettingsUpdate(payload);
   if (method === WS_METHODS.projectsMutate) {

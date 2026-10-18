@@ -7,6 +7,7 @@ import {
 } from "@t3tools/client-runtime/voice-input";
 import {
   AuthOrchestrationOperateScope,
+  AuthOrchestrationReadScope,
   type EnvironmentId,
   type ThreadId,
 } from "@t3tools/contracts";
@@ -46,7 +47,16 @@ export function getEnvironmentVoiceTranscriber(
       const result = await runAtomCommand(
         appAtomRegistry,
         serverEnvironment.createSpeechToTextUploadUrl,
-        { environmentId, input: { ...input, ...(threadId ? { threadId } : {}) } },
+        {
+          environmentId,
+          input: {
+            ...input,
+            // Naming a thread needs read access; without it cleanup runs without context.
+            ...(threadId && readEnvironmentScope(environmentId, AuthOrchestrationReadScope)
+              ? { threadId }
+              : {}),
+          },
+        },
         { reportFailure: false },
       );
       if (result._tag !== "Success") {
@@ -67,6 +77,8 @@ export function getEnvironmentVoiceTranscriber(
       if (!url) throw new Error("This environment is not connected.");
       return url;
     },
+    // Mobile has no app-wide toast yet; the transcript is still inserted.
+    onCleanupError: (message) => console.warn(`Dictation cleanup failed: ${message}`),
     upload: async ({ url, uri, mimeType, signal }) => {
       const { File, UploadType } = await import("expo-file-system");
       const result = await new File(uri).upload(url, {
