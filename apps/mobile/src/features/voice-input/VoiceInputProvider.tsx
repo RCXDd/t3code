@@ -48,6 +48,7 @@ import { VoiceInputSession } from "./voiceInputSession";
 
 const INITIAL_STATE: VoiceInputState = { phase: "idle", error: null, errorAction: null };
 const VOICE_METERING_INTERVAL_MS = 80;
+const CLEANUP_NOTICE_MS = 6_000;
 // The native constructor expects platform-flattened options, as built by useAudioRecorder.
 const { ios: IOS_RECORDING_OPTIONS, android: ANDROID_RECORDING_OPTIONS } =
   RecordingPresets.HIGH_QUALITY;
@@ -119,6 +120,14 @@ function useVoiceInputRuntime() {
     });
   }, []);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  // The transcript is still inserted; this only says why it was not cleaned up.
+  const [cleanupNotice, setCleanupNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (cleanupNotice === null) return;
+    const timeout = setTimeout(() => setCleanupNotice(null), CLEANUP_NOTICE_MS);
+    return () => clearTimeout(timeout);
+  }, [cleanupNotice]);
+  const dismissCleanupNotice = useCallback(() => setCleanupNotice(null), []);
   const keepAwakeId = useId();
   const keepAwakeSessionRef = useRef(0);
   const elapsedSecondsRef = useRef(0);
@@ -162,8 +171,13 @@ function useVoiceInputRuntime() {
       getTranscriber: () => {
         const environmentId = sessionRef.current?.environmentId ?? null;
         return (
-          (environmentId ? getEnvironmentVoiceTranscriber(environmentId) : null) ??
-          getLocalVoiceTranscriber()
+          (environmentId
+            ? getEnvironmentVoiceTranscriber(
+                environmentId,
+                sessionRef.current?.threadId ?? null,
+                setCleanupNotice,
+              )
+            : null) ?? getLocalVoiceTranscriber()
         );
       },
       requestPermission: async () => {
@@ -270,6 +284,8 @@ function useVoiceInputRuntime() {
     state,
     audioLevels,
     elapsedSeconds,
+    cleanupNotice,
+    dismissCleanupNotice,
     isBusy: voiceInputBlocksSubmission(state),
     ownerKey,
     label,

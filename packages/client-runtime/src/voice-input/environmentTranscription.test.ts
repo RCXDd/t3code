@@ -71,6 +71,23 @@ describe("parseEnvironmentTranscriptionResponse", () => {
     expect((thrown as VoiceTranscriptionError).message).toContain("Incorrect API key");
   });
 
+  it("keeps the raw transcript and reports why cleanup failed", async () => {
+    const onCleanupError = vi.fn();
+    const transcriber = createEnvironmentVoiceTranscriber({
+      locale: "de",
+      readRecording: async () => ({ mimeType: "audio/webm", sizeBytes: 1 }),
+      createUploadUrl: async () => "https://env.test/upload",
+      upload: async () => ({
+        status: 200,
+        body: '{"text":"äh hallo","cleanupError":"The cleanup model failed (HTTP 500)."}',
+      }),
+      onCleanupError,
+    });
+    const prepared = await transcriber.prepare({ signal: signal() });
+    await expect(prepared.transcribe("blob:x", { signal: signal() })).resolves.toBe("äh hallo");
+    expect(onCleanupError).toHaveBeenCalledWith("The cleanup model failed (HTTP 500).");
+  });
+
   it("falls back to the status when the body is not JSON", () => {
     expect(() =>
       parseEnvironmentTranscriptionResponse({ status: 504, body: "Gateway Timeout" }),

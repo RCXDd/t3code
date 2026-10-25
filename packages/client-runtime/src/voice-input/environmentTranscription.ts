@@ -34,6 +34,8 @@ export type EnvironmentVoiceTranscriberDependencies = {
   ) => Promise<{ readonly mimeType: string; readonly sizeBytes: number }>;
   /** Mints the signed upload URL and resolves it against the environment's HTTP origin. */
   readonly createUploadUrl: (input: SpeechToTextCreateUploadUrlInput) => Promise<string>;
+  /** The transcript was inserted unchanged because the configured cleanup failed. */
+  readonly onCleanupError?: (message: string) => void;
   /** POSTs the recording bytes and settles only after the request has stopped. */
   readonly upload: (input: {
     readonly url: string;
@@ -51,10 +53,14 @@ function failure(message: string, cause?: unknown): VoiceTranscriptionError {
   );
 }
 
-/** The route answers `{ text }` on success and `{ error }` with a user-facing reason otherwise. */
-export function parseEnvironmentTranscriptionResponse(
-  response: EnvironmentTranscriptionResponse,
-): string {
+/**
+ * The route answers `{ text }` on success, plus `cleanupError` when cleanup failed and the raw
+ * transcript was returned, and `{ error }` with a user-facing reason otherwise.
+ */
+export function parseEnvironmentTranscriptionResponse(response: EnvironmentTranscriptionResponse): {
+  readonly text: string;
+  readonly cleanupError: string | null;
+} {
   let parsed: unknown = null;
   try {
     parsed = JSON.parse(response.body);
@@ -62,7 +68,10 @@ export function parseEnvironmentTranscriptionResponse(
   const record =
     parsed !== null && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
   if (response.status >= 200 && response.status < 300 && typeof record.text === "string") {
-    return record.text;
+    return {
+      text: record.text,
+      cleanupError: typeof record.cleanupError === "string" ? record.cleanupError : null,
+    };
   }
   throw failure(
     typeof record.error === "string" && record.error.length > 0
@@ -114,7 +123,9 @@ export function createEnvironmentVoiceTranscriber(
             throw failure("Could not upload the recording to this environment.", error);
           }
           throwIfVoiceTranscriptionAborted(signal);
-          return parseEnvironmentTranscriptionResponse(response);
+          const result = parseEnvironmentTranscriptionResponse(response);
+          if (result.cleanupError) dependencies.onCleanupError?.(result.cleanupError);
+          return result.text;
         },
       };
     },

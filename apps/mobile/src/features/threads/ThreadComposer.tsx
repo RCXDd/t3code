@@ -581,6 +581,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     ownerKey: composerDraftKey,
     label: props.selectedThread.title || "Untitled thread",
     environmentId: props.environmentId,
+    threadId: props.selectedThread.id,
     readDraftMessage: () => getComposerDraftSnapshot(composerDraftKey).text,
     subscribeToDraftChanges: (onChange) => appAtomRegistry.subscribe(composerDraftsAtom, onChange),
     selection: composerMenu.selection,

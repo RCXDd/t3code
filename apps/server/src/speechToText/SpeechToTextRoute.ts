@@ -1,5 +1,10 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeOS from "node:os";
+
 import {
   isSpeechToTextConfigured,
+  type ServerSettings,
+  ThreadId,
   SPEECH_TO_TEXT_UPLOAD_URL_TTL_MS,
   type SpeechToTextCreateUploadUrlInput,
   SpeechToTextUnavailableError,
@@ -7,6 +12,7 @@ import {
 import * as ByteSize from "effect/ByteSize";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { HttpMiddleware, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
@@ -19,7 +25,14 @@ import {
   timingSafeEqualBase64Url,
 } from "../auth/utils.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
+import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import * as TextGeneration from "../textGeneration/TextGeneration.ts";
+import {
+  cleanDictation,
+  recentDictationConversation,
+  SpeechToTextCleanupFailure,
+} from "./SpeechToTextCleanup.ts";
 import { SpeechToTextFailure, transcribeSpeech } from "./SpeechToText.ts";
 
 export const SPEECH_TO_TEXT_ROUTE_PREFIX = "/api/speech-to-text/transcriptions";
@@ -34,6 +47,7 @@ const UploadClaims = Schema.Struct({
   mimeType: Schema.String,
   sizeBytes: Schema.Number,
   expiresAt: Schema.Number,
+  threadId: Schema.optionalKey(ThreadId),
 });
 type UploadClaims = typeof UploadClaims.Type;
 
@@ -65,6 +79,7 @@ export const issueSpeechToTextUploadUrl = Effect.fn("SpeechToText.issueUploadUrl
       mimeType: input.mimeType,
       sizeBytes: input.sizeBytes,
       expiresAt,
+      ...(input.threadId ? { threadId: input.threadId } : {}),
     }),
   );
   return {
@@ -97,6 +112,73 @@ const jsonResponse = (status: number, body: Record<string, string>) =>
     status,
     headers: { "cache-control": "private, no-store" },
   });
+
+// Without a user-turn limit the window never widens to whole turns, which can hold megabytes of
+// tool output. The limit applies per thread segment, so a fork reads it once per ancestor; fork
+// chains are short, and the timeout below bounds the rest. Six chat messages are kept.
+const CONTEXT_ROW_LIMIT = 16;
+const CONTEXT_TIMEOUT = "5 seconds";
+
+const readDictationConversation = Effect.fn("SpeechToText.readDictationConversation")(function* (
+  threadId: ThreadId | null,
+) {
+  if (!threadId) return [];
+  // The orchestrator, not ThreadManagementService, so context never triggers a legacy import.
+  const orchestrator = yield* Effect.serviceOption(Orchestrator.OrchestratorV2);
+  if (Option.isNone(orchestrator)) return [];
+  return yield* orchestrator.value
+    .getThreadSnapshotWindow(threadId, { rowLimit: CONTEXT_ROW_LIMIT })
+    .pipe(
+      // Visible items include a fork's inherited conversation.
+      Effect.map((snapshot) => recentDictationConversation(snapshot.projection.visibleTurnItems)),
+      Effect.timeout(CONTEXT_TIMEOUT),
+      // Context only improves spelling; a missing or slow thread must not fail dictation.
+      Effect.orElseSucceed(() => []),
+    );
+});
+
+/** A failed cleanup still inserts the raw transcript, and reports why it was not cleaned. */
+const cleanTranscript = Effect.fn("SpeechToText.cleanTranscript")(function* (
+  settings: ServerSettings,
+  transcript: string,
+  threadId: ThreadId | null,
+) {
+  const cleanup = settings.speechToText.cleanup;
+  const conversation =
+    cleanup.useThreadContext && cleanup.mode === "openai-compatible"
+      ? yield* readDictationConversation(threadId)
+      : [];
+  const textGeneration = yield* Effect.serviceOption(TextGeneration.TextGeneration);
+  // An empty directory: the rewrite needs no checkout, and agent CLIs read their working tree.
+  const fileSystem = yield* FileSystem.FileSystem;
+  // Removal is best-effort: a directory that cannot be deleted must not cost the transcript.
+  const cwd = yield* Effect.acquireRelease(
+    fileSystem.makeTempDirectory({ prefix: "t3code-dictation-" }).pipe(Effect.option),
+    (directory) =>
+      Option.isSome(directory)
+        ? fileSystem.remove(directory.value, { recursive: true }).pipe(Effect.ignoreCause)
+        : Effect.void,
+  ).pipe(Effect.map((directory) => Option.getOrElse(directory, () => NodeOS.tmpdir())));
+  return yield* cleanDictation({
+    settings: settings.speechToText,
+    transcript,
+    conversation,
+    textGenerationModel: settings.textGenerationModelSelection,
+    textGeneration: Option.getOrNull(textGeneration),
+    cwd,
+  }).pipe(
+    Effect.map((text) => jsonResponse(200, { text })),
+    Effect.catchTags({
+      SpeechToTextCleanupFailure: (failure: SpeechToTextCleanupFailure) =>
+        Effect.as(
+          Effect.logWarning("Dictation cleanup failed; returning the raw transcript.", {
+            message: failure.message,
+          }),
+          jsonResponse(200, { text: transcript, cleanupError: failure.message }),
+        ),
+    }),
+  );
+});
 
 export const layerSpeechToTextRoute = HttpRouter.add(
   "POST",
@@ -136,7 +218,25 @@ export const layerSpeechToTextRoute = HttpRouter.add(
         bytes: body.value,
         mimeType: claims.mimeType,
       }).pipe(
-        Effect.map((text) => jsonResponse(200, { text })),
+        Effect.flatMap((transcript) =>
+          settings.value.speechToText.cleanup.mode === null
+            ? Effect.succeed(jsonResponse(200, { text: transcript }))
+            : cleanTranscript(settings.value, transcript, claims.threadId ?? null).pipe(
+                Effect.scoped,
+                // A provider's own finalizers can die (a temp directory it cannot remove); the
+                // transcript is already in hand, so a defect must not cost it.
+                Effect.catchDefect((defect) =>
+                  Effect.as(
+                    Effect.logWarning("Dictation cleanup failed unexpectedly.", { defect }),
+                    jsonResponse(200, {
+                      text: transcript,
+                      cleanupError:
+                        "Cleanup failed unexpectedly, so the transcript was inserted as transcribed.",
+                    }),
+                  ),
+                ),
+              ),
+        ),
         Effect.catchTags({
           SpeechToTextFailure: (failure: SpeechToTextFailure) =>
             Effect.as(

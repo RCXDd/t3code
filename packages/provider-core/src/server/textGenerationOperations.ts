@@ -9,6 +9,7 @@ import type { ProviderTextGeneration } from "./textGeneration.ts";
 import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
+  buildDictationCleanupPrompt,
   buildPrContentPrompt,
   buildReviewGuidePrompt,
   buildThreadTitlePrompt,
@@ -166,11 +167,24 @@ export function fromRunner(name: string, run: Runner): ProviderTextGeneration {
     });
   });
 
+  const cleanDictation: NonNullable<ProviderTextGeneration["cleanDictation"]> = Effect.fn(
+    `${name}.cleanDictation`,
+  )(function* (input) {
+    const generated = yield* run({
+      operation: "cleanDictation",
+      cwd: input.cwd,
+      modelSelection: input.modelSelection,
+      ...buildDictationCleanupPrompt(input),
+    });
+    return { text: generated.text.trim() };
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
     generateReviewGuide,
+    cleanDictation,
   } satisfies ProviderTextGeneration;
 }
