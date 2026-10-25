@@ -49,6 +49,7 @@ import {
 } from "./auth/http.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import { WEBHOOK_ROUTE_PREFIX } from "./scheduledTasks/ScheduledTaskService.ts";
+import { SPEECH_TO_TEXT_ROUTE_PREFIX } from "./speechToText/SpeechToTextRoute.ts";
 import {
   browserApiCorsAllowedHeaders,
   browserApiCorsAllowedMethods,
@@ -388,11 +389,29 @@ const UNTRACED_REQUEST_PATHS: ReadonlySet<string> = new Set([OTLP_TRACES_PROXY_P
 const layerUntracedRequests = Layer.succeed(HttpMiddleware.TracerDisabledWhen)((request) => {
   const queryIndex = request.url.indexOf("?");
   const path = queryIndex === -1 ? request.url : request.url.slice(0, queryIndex);
-  // Webhook URLs carry their secret token in the path, so they never reach a trace.
-  return UNTRACED_REQUEST_PATHS.has(path) || path.startsWith(`${WEBHOOK_ROUTE_PREFIX}/`);
+  // Webhook and dictation upload URLs carry their secret token in the path, so they never
+  // reach a trace.
+  return (
+    UNTRACED_REQUEST_PATHS.has(path) ||
+    path.startsWith(`${WEBHOOK_ROUTE_PREFIX}/`) ||
+    path.startsWith(`${SPEECH_TO_TEXT_ROUTE_PREFIX}/`)
+  );
 });
 
 export const withUntracedRequests = Layer.provide(layerUntracedRequests);
+
+/**
+ * Passed as HttpRouter.serve's middleware, which runs inside the access logger and before CORS,
+ * so preflights for token-bearing dictation upload URLs are kept out of the log as well.
+ */
+export const withUnloggedCredentialRequests =
+  /* Wraps every request inside the server's request span; a span per request would be noise. */
+  Effect.fnUntraced(function* <A, E, R>(effect: Effect.Effect<A, E, R>) {
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    return yield* request.url.startsWith(`${SPEECH_TO_TEXT_ROUTE_PREFIX}/`)
+      ? HttpMiddleware.withLoggerDisabled(effect)
+      : effect;
+  });
 
 export const layerAssetRoute = HttpRouter.add(
   "GET",

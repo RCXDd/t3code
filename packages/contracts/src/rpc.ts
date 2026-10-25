@@ -102,6 +102,11 @@ import {
   AttachmentUploadSigningKeyError,
 } from "./assets.ts";
 import {
+  SpeechToTextCreateUploadUrlInput,
+  SpeechToTextCreateUploadUrlResult,
+  SpeechToTextUnavailableError,
+} from "./speechToText.ts";
+import {
   PersistChatAttachmentsError,
   PersistChatAttachmentsInput,
   PersistChatAttachmentsResult,
@@ -510,6 +515,7 @@ export const WS_METHODS = {
   serverGetResourceTelemetryHistory: "server.getResourceTelemetryHistory",
   serverRetryResourceTelemetry: "server.retryResourceTelemetry",
   serverCheckOtlpEndpoint: "server.checkOtlpEndpoint",
+  speechToTextCreateUploadUrl: "speechToText.createUploadUrl",
   serverSignalProcess: "server.signalProcess",
   serverReportClientActivity: "server.reportClientActivity",
   serverReportHostPowerState: "server.reportHostPowerState",
@@ -899,6 +905,12 @@ const WsServerCheckOtlpEndpointRpc = Rpc.make(WS_METHODS.serverCheckOtlpEndpoint
   payload: OtlpEndpointCheckInput,
   success: OtlpEndpointCheckResult,
   error: EnvironmentAuthorizationError,
+});
+
+const WsSpeechToTextCreateUploadUrlRpc = Rpc.make(WS_METHODS.speechToTextCreateUploadUrl, {
+  payload: SpeechToTextCreateUploadUrlInput,
+  success: SpeechToTextCreateUploadUrlResult,
+  error: Schema.Union([SpeechToTextUnavailableError, EnvironmentAuthorizationError]),
 });
 
 const WsServerGetUsageSummaryRpc = Rpc.make(WS_METHODS.serverGetUsageSummary, {
@@ -2021,6 +2033,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsAssetsCreateUrlRpc,
   WsAssetsPersistChatAttachmentsRpc,
   WsAttachmentsCreateUploadUrlRpc,
+  WsSpeechToTextCreateUploadUrlRpc,
   WsAttachmentsDeleteRpc,
   WsMcpAppsCallToolRpc,
   WsMcpAppsToolInfoRpc,

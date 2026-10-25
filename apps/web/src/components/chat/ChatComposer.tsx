@@ -1,5 +1,7 @@
 import { useComposerTypingGuard } from "./useComposerTypingGuard";
 import { insertAttachmentReferencesForDraft } from "./composerAttachmentReferences";
+import { ComposerDictationControl } from "./ComposerDictationControl";
+import { useComposerDictation } from "./useComposerDictation";
 import { DESKTOP_PASTE_AS_TEXT_EVENT } from "../../lib/desktopPasteAsText";
 import { runtimeModeConfig, runtimeModeOptions as runtimeModes } from "./runtimeModeConfig";
 import { isLocalEnvironmentDisabled } from "../../localEnvironment";
@@ -987,8 +989,36 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     selectedProviderEntry?.snapshot,
     selectedModel,
   );
+  // The editor switches between the draft and each pending question's answer; a transcript
+  // must land where recording started, so each destination is its own owner.
+  const dictationOwnerKey = `${composerDraftTargetKey}:${pendingUserInputs[0]?.requestId ?? "draft"}:${
+    activePendingProgress?.activeQuestion?.id ?? ""
+  }`;
+  const dictation = useComposerDictation({
+    environmentId,
+    ownerKey: dictationOwnerKey,
+    readDraft: () => {
+      const text = promptRef.current;
+      return {
+        ownerKey: dictationOwnerKey,
+        text,
+        selection: composerEditorRef.current?.readSelectionRange() ?? {
+          start: text.length,
+          end: text.length,
+        },
+        // The editor is frozen while dictating, and an unchanged text keeps the selection valid.
+        revision: 0,
+      };
+    },
+    commitDraft: (text, selection) => {
+      applyPromptReplacementStable(0, promptRef.current.length, text, {
+        expandedCursorAfterReplace: selection.start,
+      });
+    },
+  });
   const sendDisabledReason =
     externalSendDisabledReason ??
+    (dictation.blocksSubmission ? "Finish dictation first." : null) ??
     (multipleModelSelections?.length === 0 ? "Select at least one model." : null) ??
     (activePendingProgress
       ? attachmentBlockReason
@@ -3801,7 +3831,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       isConnecting ||
                       projectSelectionRequired ||
                       isChoiceOnlyPendingQuestion ||
-                      activePendingIsResponding
+                      activePendingIsResponding ||
+                      dictation.blocksSubmission
                     }
                   />
                 </ComposerContextActionsContext>
@@ -3880,6 +3911,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
                 >
                   {composerAttachButton}
+                  {dictation.available &&
+                  !isComposerApprovalState &&
+                  !isChoiceOnlyPendingQuestion ? (
+                    <ComposerDictationControl
+                      dictation={dictation}
+                      disabled={
+                        isConnecting || projectSelectionRequired || activePendingIsResponding
+                      }
+                    />
+                  ) : null}
                   <ComposerFooterPrimaryActions
                     compact={isComposerResting || isComposerPrimaryActionsCompact}
                     canOperateThread={canOperateThread}
