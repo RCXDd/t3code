@@ -2,9 +2,10 @@ import {
   buildTraitsTriggerDisplay,
   getDescriptorStringValue,
   REASONING_SELECT_DESCRIPTOR_IDS,
+  resolveDefaultChoiceId,
   selectableProviderOptionChoices,
 } from "@t3tools/client-runtime/model-traits";
-import type { ProviderOptionDescriptor, RuntimeMode } from "@t3tools/contracts";
+import type { ModelSelection, ProviderOptionDescriptor, RuntimeMode } from "@t3tools/contracts";
 import type { EffortDisplay } from "@t3tools/contracts/settings";
 import { CheckIcon, ChevronUpIcon } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, use, useRef } from "react";
@@ -207,7 +208,10 @@ function moveBetweenRows(event: KeyboardEvent<HTMLElement>) {
   next.scrollIntoView({ block: "nearest" });
 }
 
-function EffortLevels(props: { traits: TraitsSelectionInput }) {
+function EffortLevels(props: {
+  traits: TraitsSelectionInput;
+  defaultModelSelection: ModelSelection | null;
+}) {
   const traits = useTraitsSelection(props.traits);
   const { effort, others } = columnControls(
     props.traits.provider,
@@ -257,6 +261,11 @@ function EffortLevels(props: { traits: TraitsSelectionInput }) {
     const locked =
       descriptor.id === traits.primarySelectDescriptor?.id && traits.ultrathinkInBodyText;
     const value = traits.selectValue(control.descriptor);
+    const defaultChoiceId = resolveDefaultChoiceId(
+      control.descriptor,
+      props.traits,
+      props.defaultModelSelection,
+    );
     return (
       <div
         key={descriptor.id}
@@ -276,7 +285,7 @@ function EffortLevels(props: { traits: TraitsSelectionInput }) {
             label={option.label}
             selected={option.id === value}
             description={option.description}
-            isDefault={option.isDefault}
+            isDefault={option.id === defaultChoiceId}
             disabled={locked}
             level={isEffort}
             onPick={() => traits.changeSelect(control.descriptor, option.id)}
@@ -300,7 +309,10 @@ function NoEffortRow() {
 }
 
 /** The model picker's effort column: the selected model's levels and its other options. */
-export function ComposerEffortColumn(props: { traits: TraitsSelectionInput | null }) {
+export function ComposerEffortColumn(props: {
+  traits: TraitsSelectionInput | null;
+  defaultModelSelection: ModelSelection | null;
+}) {
   const picker = use(DockedPickerContext);
   const visibility = props.traits ? getTraitsSectionVisibility(props.traits) : null;
   const effort =
@@ -327,7 +339,11 @@ export function ComposerEffortColumn(props: { traits: TraitsSelectionInput | nul
         className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overscroll-contain px-2 pt-2.5 pb-1.5"
         onKeyDown={moveBetweenRows}
       >
-        {props.traits ? <EffortLevels traits={props.traits} /> : <NoEffortRow />}
+        {props.traits ? (
+          <EffortLevels traits={props.traits} defaultModelSelection={props.defaultModelSelection} />
+        ) : (
+          <NoEffortRow />
+        )}
       </div>
     </>
   );
